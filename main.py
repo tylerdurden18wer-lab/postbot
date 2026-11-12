@@ -12,9 +12,11 @@ from telethon import TelegramClient, events, errors
 
 API_ID = int(os.environ["API_ID"]); API_HASH = os.environ["API_HASH"]
 BOT_TOKEN = os.environ["BOT_TOKEN"]; OWNER = int(os.environ["OWNER_ID"])
-tg = TelegramClient("session", API_ID, API_HASH)
+DATA = os.environ.get("DATA_DIR", ".")  # hostingda Volume yo'li
+os.makedirs(DATA, exist_ok=True)
+tg = TelegramClient(os.path.join(DATA, "session"), API_ID, API_HASH)
 
-D = sqlite3.connect("data.db", check_same_thread=False); D.row_factory = sqlite3.Row
+D = sqlite3.connect(os.path.join(DATA, "data.db"), check_same_thread=False); D.row_factory = sqlite3.Row
 D.executescript("""
 create table if not exists ads(id integer primary key, msg_id int, title text);
 create table if not exists jobs(id integer primary key, ad_id int, chats text, interval int, active int default 1, next_run real default 0);
