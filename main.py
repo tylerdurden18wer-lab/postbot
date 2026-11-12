@@ -39,13 +39,19 @@ PH = {}
 WEBAPP_URL = os.environ.get("WEBAPP_URL", "").strip()
 bot = TelegramClient(os.path.join(DATA, "bot"), API_ID, API_HASH)
 
-@bot.on(events.NewMessage(pattern="/start"))
+@bot.on(events.NewMessage(pattern=r"^/start"))
 async def start_cmd(e):  # /start bosilganda Mini App tugmasini yuboradi
-    if e.sender_id != OWNER: return await e.respond("Bu bot shaxsiy.")
-    if not WEBAPP_URL: return await e.respond("WEBAPP_URL sozlanmagan (.env yoki Variables).")
-    from telethon import types
-    mk = types.ReplyInlineMarkup([types.KeyboardButtonRow([types.KeyboardButtonWebView("📣 Ochish", WEBAPP_URL)])])
-    await e.respond("PostBot tayyor. Ilovani ochish uchun tugmani bosing 👇", buttons=mk)
+    try:
+        if e.sender_id != OWNER: return await e.respond("Bu bot shaxsiy.")
+        await e.respond("PostBot ishlayapti ✅")
+        if not WEBAPP_URL: return await e.respond("WEBAPP_URL sozlanmagan (Variables).")
+        from telethon import types
+        mk = types.ReplyInlineMarkup([types.KeyboardButtonRow([types.KeyboardButtonWebView("📣 Ochish", WEBAPP_URL)])])
+        await e.respond("Ilovani ochish uchun tugmani bosing 👇", buttons=mk)
+    except Exception as ex:
+        print("start xato:", repr(ex))
+        try: await e.respond(f"Xato: {ex}")
+        except Exception: pass
 
 def set_menu():  # chat pastidagi menyu tugmasini avtomatik o'rnatadi
     import urllib.request
