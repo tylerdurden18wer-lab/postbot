@@ -38,7 +38,7 @@ nav button{flex:1;background:none;color:var(--mut);padding:9px 4px;font-size:13p
 const tg=Telegram.WebApp;tg.ready();tg.expand();
 const $=s=>document.querySelector(s),V=$('#v');
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'})[c]);
-async function api(p,m='GET',b){const r=await fetch('/api/'+p,{method:m,headers:{'X-Init-Data':tg.initData,'Content-Type':'application/json'},body:b?JSON.stringify(b):undefined});
+async function api(p,m='GET',b){const c=new AbortController();setTimeout(()=>c.abort(),90000);const r=await fetch('/api/'+p,{method:m,signal:c.signal,headers:{'X-Init-Data':tg.initData,'Content-Type':'application/json'},body:b?JSON.stringify(b):undefined}).catch(()=>{throw new Error('Server javob bermadi (vaqt tugadi)')});
  const j=await r.json().catch(()=>({}));if(!r.ok){const m=j.detail||('Xato '+r.status);toast(m);throw new Error(m)}return j}
 function toast(t){const e=document.createElement('div');e.className='toast';e.textContent=t;document.body.append(e);setTimeout(()=>e.remove(),5000)}
 const TABS=[['ads','📝 E\'lonlar'],['job','⏰ Yuborish'],['stat','📊 Statistika']];let tab='ads',sel=new Map(),adSel=null;
@@ -52,7 +52,7 @@ function login(){V.innerHTML=`<div class="card"><h2>Telegram akkauntga kirish</h
   <button id="ok" style="width:100%">Kirish</button></div>`;
   $('#ok').onclick=async()=>{const r=await api('login','POST',{code:$('#cd').value.trim(),password:$('#pw').value});
    if(r.need_password)return toast('2 bosqichli parolni kiriting');toast('Kirildi ✅');boot()}}}
-async function show(){try{await ({ads:vAds,job:vJob,stat:vStat})[tab]()}catch(e){V.innerHTML=`<div class="card"><b>Xato</b><div class="mut">${esc(e.message)}</div></div>`}}
+async function show(){V.innerHTML='<div class="card mut">Yuklanmoqda… (guruhlar ko\'p bo\'lsa 1 daqiqagacha cho\'zilishi mumkin)</div>';try{await ({ads:vAds,job:vJob,stat:vStat})[tab]()}catch(e){V.innerHTML=`<div class="card"><b>Xato</b><div class="mut">${esc(e.message)}</div></div>`}}
 async function vAds(){const [a,s]=await Promise.all([api('ads'),api('saved')]);
  V.innerHTML=`<p class="mut" style="margin-bottom:8px">E'lonni avval Telegram'dagi <b>Saqlangan xabarlar</b> (Saved Messages) ga yozing: matn, video, premium emoji, stiker — hammasi aynan o'zidek yuboriladi.</p>
  <h2>Mening e'lonlarim</h2>${a.map(x=>`<div class="card row"><b>${esc(x.title)}</b><button class="s d" data-d="${x.id}">O'chirish</button></div>`).join('')||'<p class="mut">Hali yo\'q</p>'}

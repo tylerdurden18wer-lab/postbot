@@ -95,9 +95,12 @@ async def login(b: dict):
     except Exception as e: raise HTTPException(400, str(e))
     return {"ok": 1}
 
+GC = {"t": 0, "d": []}
 @r.get("/groups")
-async def groups():
-    return [{"id": d.id, "title": d.title} async for d in tg.iter_dialogs() if d.is_group]
+async def groups(refresh: int = 0):  # 10 daqiqa keshlanadi (guruh ko'p bo'lsa sekin bo'ladi)
+    if refresh or time.time() - GC["t"] > 600:
+        GC["d"] = [{"id": d.id, "title": d.title} async for d in tg.iter_dialogs() if d.is_group]; GC["t"] = time.time()
+    return GC["d"]
 
 @r.get("/saved")
 async def saved():  # E'lonlar "Saved Messages" (Izbrannoe) dan olinadi
