@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="uz"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>PostBot</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+:root{--bg:#0e1424;--card:rgba(255,255,255,.08);--tx:#f2f5ff;--mut:#9aa7c7;--a:#4fd1c5;--b:#7c6cff;--bad:#ff6b8a}
+@media(prefers-color-scheme:light){:root{--bg:#eef2ff;--card:rgba(255,255,255,.75);--tx:#141a33;--mut:#5b6690}}
+*{box-sizing:border-box;margin:0;-webkit-tap-highlight-color:transparent}
+body{font:15px/1.4 system-ui,sans-serif;background:var(--bg);color:var(--tx);min-height:100vh;padding:16px 14px 90px;overflow-x:hidden}
+.blob{position:fixed;width:320px;height:320px;border-radius:50%;filter:blur(70px);opacity:.45;z-index:-1;animation:fl 14s ease-in-out infinite alternate}
+.b1{background:var(--b);top:-80px;left:-90px}.b2{background:var(--a);bottom:-100px;right:-80px;animation-delay:-7s}
+@keyframes fl{to{transform:translate(60px,80px) scale(1.2)}}
+h1{font-size:24px;margin:4px 0 14px}h2{font-size:17px;margin:14px 0 8px}
+.card{background:var(--card);backdrop-filter:blur(14px);border:1px solid rgba(255,255,255,.12);border-radius:18px;padding:12px 14px;margin-bottom:10px;animation:in .35s both}
+@keyframes in{from{opacity:0;transform:translateY(10px)}}
+.row{display:flex;align-items:center;gap:10px;justify-content:space-between}
+.mut{color:var(--mut);font-size:13px}
+button,input{font:inherit;border:0;border-radius:14px;padding:11px 14px;color:var(--tx)}
+input{width:100%;background:var(--card);border:1px solid rgba(255,255,255,.15);margin-bottom:8px}
+button{background:linear-gradient(135deg,var(--b),var(--a));color:#fff;font-weight:600;cursor:pointer;transition:transform .15s}
+button:active{transform:scale(.94)}button.g{background:var(--card);color:var(--tx)}button.s{padding:7px 11px;font-size:13px}
+button.d{background:var(--bad)}
+.chip{display:inline-block;padding:8px 12px;margin:3px;border-radius:99px;background:var(--card);border:1px solid transparent;transition:.2s;cursor:pointer}
+.chip.on{background:linear-gradient(135deg,var(--b),var(--a));color:#fff;transform:scale(1.04)}
+nav{position:fixed;bottom:0;left:0;right:0;display:flex;gap:6px;padding:10px 12px calc(10px + env(safe-area-inset-bottom));background:var(--bg);border-top:1px solid rgba(255,255,255,.1)}
+nav button{flex:1;background:none;color:var(--mut);padding:9px 4px;font-size:13px}nav button.on{color:#fff;background:var(--card)}
+.big{font-size:30px;font-weight:800;background:linear-gradient(135deg,var(--b),var(--a));-webkit-background-clip:text;background-clip:text;color:transparent}
+.stat{flex:1;text-align:center}
+.bar{height:6px;border-radius:9px;background:linear-gradient(90deg,var(--b),var(--a));margin-top:6px;transition:width .8s}
+.toast{position:fixed;top:14px;left:50%;transform:translateX(-50%);background:var(--tx);color:var(--bg);padding:9px 16px;border-radius:99px;animation:in .3s}
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style></head><body>
+<div class="blob b1"></div><div class="blob b2"></div>
+<h1>📣 PostBot</h1><div id="v"></div>
+<nav id="nav" hidden></nav>
+<script>
+const tg=Telegram.WebApp;tg.ready();tg.expand();
+const $=s=>document.querySelector(s),V=$('#v');
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'})[c]);
+async function api(p,m='GET',b){const r=await fetch('/api/'+p,{method:m,headers:{'X-Init-Data':tg.initData,'Content-Type':'application/json'},body:b?JSON.stringify(b):undefined});
+ const j=await r.json().catch(()=>({}));if(!r.ok){toast(j.detail||'Xato');throw 0}return j}
+function toast(t){const e=document.createElement('div');e.className='toast';e.textContent=t;document.body.append(e);setTimeout(()=>e.remove(),2500)}
+const TABS=[['ads','📝 E\'lonlar'],['job','⏰ Yuborish'],['stat','📊 Statistika']];let tab='ads',sel=new Map(),adSel=null;
+function nav(){const n=$('#nav');n.hidden=false;n.innerHTML=TABS.map(([k,t])=>`<button class="${k==tab?'on':''}" data-k="${k}">${t}</button>`).join('');
+ n.querySelectorAll('button').forEach(b=>b.onclick=()=>{tab=b.dataset.k;nav();show()})}
+async function boot(){const s=await api('state');if(s.auth){nav();show()}else login()}
+function login(){V.innerHTML=`<div class="card"><h2>Telegram akkauntga kirish</h2><p class="mut" style="margin-bottom:10px">Telefon raqamingizni kiriting. Kod Telegram'ga keladi.</p>
+ <input id="ph" placeholder="+998901234567" inputmode="tel"><button id="go" style="width:100%">Kod yuborish</button></div>`;
+ $('#go').onclick=async()=>{await api('send_code','POST',{phone:$('#ph').value.trim()});
+  V.innerHTML=`<div class="card"><h2>Kodni kiriting</h2><input id="cd" placeholder="12345" inputmode="numeric"><input id="pw" type="password" placeholder="2 bosqichli parol (bo'lsa)">
+  <button id="ok" style="width:100%">Kirish</button></div>`;
+  $('#ok').onclick=async()=>{const r=await api('login','POST',{code:$('#cd').value.trim(),password:$('#pw').value});
+   if(r.need_password)return toast('2 bosqichli parolni kiriting');toast('Kirildi ✅');boot()}}}
+function show(){({ads:vAds,job:vJob,stat:vStat})[tab]()}
+async function vAds(){const [a,s]=await Promise.all([api('ads'),api('saved')]);
+ V.innerHTML=`<p class="mut" style="margin-bottom:8px">E'lonni avval Telegram'dagi <b>Saqlangan xabarlar</b> (Saved Messages) ga yozing: matn, video, premium emoji, stiker — hammasi aynan o'zidek yuboriladi.</p>
+ <h2>Mening e'lonlarim</h2>${a.map(x=>`<div class="card row"><b>${esc(x.title)}</b><button class="s d" data-d="${x.id}">O'chirish</button></div>`).join('')||'<p class="mut">Hali yo\'q</p>'}
+ <h2>Saqlangan xabarlardan qo'shish</h2>${s.map(m=>`<div class="card row"><div><span class="mut">${m.kind}</span><div>${esc(m.text)||'(matnsiz)'}</div></div><button class="s" data-m="${m.id}" data-t="${esc(m.text.slice(0,25)||m.kind)}">Qo'shish</button></div>`).join('')}`;
+ V.querySelectorAll('[data-d]').forEach(b=>b.onclick=async()=>{await api('ads/'+b.dataset.d,'DELETE');vAds()});
+ V.querySelectorAll('[data-m]').forEach(b=>b.onclick=async()=>{const t=prompt('E\'lon nomi',b.dataset.t);if(t===null)return;await api('ads','POST',{msg_id:+b.dataset.m,title:t});toast('Qo\'shildi ✅');vAds()})}
+async function vJob(){const [a,g,j]=await Promise.all([api('ads'),api('groups'),api('jobs')]);
+ V.innerHTML=`<h2>Yangi vazifa</h2><div class="card"><div class="mut">1. E'lonni tanlang</div>
+ ${a.map(x=>`<span class="chip ${adSel==x.id?'on':''}" data-a="${x.id}">${esc(x.title)}</span>`).join('')||'<p class="mut">Avval e\'lon qo\'shing</p>'}
+ <div class="mut" style="margin-top:10px">2. Guruhlarni tanlang (${sel.size})</div><button class="s g" id="all">Hammasi</button>
+ <div>${g.map(x=>`<span class="chip ${sel.has(x.id)?'on':''}" data-g="${x.id}" data-t="${esc(x.title)}">${esc(x.title)}</span>`).join('')}</div>
+ <div class="mut" style="margin:10px 0 4px">3. Har necha daqiqada takrorlansin</div><input id="iv" type="number" value="60" min="1">
+ <button id="mk" style="width:100%">Vazifani yaratish</button></div>
+ <h2>Vazifalar</h2>${j.map(x=>`<div class="card"><div class="row"><b>${esc(x.title)}</b><span class="mut">${x.chats.length} guruh · ${x.interval} daq</span></div>
+ <div class="row" style="margin-top:8px"><button class="s" data-n="${x.id}">Hozir yuborish</button><button class="s g" data-p="${x.id}">${x.active?'⏸ To\'xtatish':'▶️ Yoqish'}</button><button class="s d" data-x="${x.id}">🗑</button></div></div>`).join('')}`;
+ V.querySelectorAll('[data-a]').forEach(c=>c.onclick=()=>{adSel=+c.dataset.a;vJob()});
+ V.querySelectorAll('[data-g]').forEach(c=>c.onclick=()=>{const i=+c.dataset.g;sel.has(i)?sel.delete(i):sel.set(i,c.dataset.t);c.classList.toggle('on');vJob.keep=1;vJob()});
+ $('#all').onclick=()=>{g.forEach(x=>sel.set(x.id,x.title));vJob()};
+ $('#mk').onclick=async()=>{if(!adSel||!sel.size)return toast('E\'lon va guruh tanlang');
+  await api('jobs','POST',{ad_id:adSel,chats:[...sel].map(([id,title])=>({id,title})),interval:$('#iv').value});sel.clear();toast('Yaratildi ✅');vJob()};
+ const act=(k,f)=>V.querySelectorAll(`[data-${k}]`).forEach(b=>b.onclick=async()=>{await f(b.dataset[k]);vJob()});
+ act('n',i=>api(`jobs/${i}/now`,'POST'));act('p',i=>api(`jobs/${i}/toggle`,'POST'));act('x',i=>api('jobs/'+i,'DELETE'))}
+async function vStat(){const s=await api('stats'),mx=Math.max(1,...s.chats.map(c=>c.n));
+ V.innerHTML=`<div class="card row"><div class="stat"><div class="big">${s.total}</div><div class="mut">yuborildi</div></div><div class="stat"><div class="big">${s.replies}</div><div class="mut">reply</div></div><div class="stat"><div class="big">${s.people}</div><div class="mut">odam</div></div></div>
+ <h2>Guruhlar bo'yicha</h2>${s.chats.map(c=>`<div class="card"><div class="row"><b>${esc(c.title)}</b><span class="mut">${c.n} marta</span></div><div class="mut">${c.rep} reply · ${c.ppl} kishi</div><div class="bar" style="width:${c.n/mx*100}%"></div></div>`).join('')||'<p class="mut">Hozircha statistika yo\'q</p>'}`}
+boot();
+</script></body></html>
