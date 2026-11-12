@@ -55,21 +55,27 @@ function login(){V.innerHTML=`<div class="card"><h2>Telegram akkauntga kirish</h
    if(r.need_password)return toast('2 bosqichli parolni kiriting');toast('Kirildi ✅');boot()}}}
 async function show(){V.innerHTML='<div class="card mut">Yuklanmoqda… (guruhlar ko\'p bo\'lsa 1 daqiqagacha cho\'zilishi mumkin)</div>';
  try{await ({new:vNew,jobs:vJobs,stat:vStat,acc:vAcc})[tab]()}catch(e){V.innerHTML=`<div class="card"><b>Xato</b><div class="mut">${esc(e.message)}</div></div>`}}
-async function vNew(){const [s,g]=await Promise.all([api('saved'),api('groups')]);
+async function vNew(){const s=await api('saved');
  V.innerHTML=`<div class="card"><h2>1. E'lonni tanlang</h2><p class="mut">E'lonni Telegram'dagi <b>Saqlangan xabarlar</b>ga yozing (video, premium emoji, stiker ham bo'ladi), keyin shu yerda tanlang.</p>
  ${s.map(m=>`<div class="item ${st.msg==m.id?'on':''}" data-m="${m.id}" data-t="${esc(m.text.slice(0,25)||m.kind)}"><span class="mut">${m.kind}</span> ${esc(m.text)||'(matnsiz)'}</div>`).join('')||'<p class="mut">Saqlangan xabarlar bo\'sh</p>'}</div>
- <div class="card"><h2>2. Guruhlarni tanlang <span id="cnt" class="mut"></span></h2><input id="q" placeholder="Guruhni qidirish...">
- <button class="s g" id="all">Ko'ringanlarini tanlash</button> <button class="s g" id="none">Tozalash</button>
- <div id="gl" style="margin-top:6px">${g.map(x=>`<span class="chip ${st.sel.has(x.id)?'on':''}" data-g="${x.id}" data-t="${esc(x.title)}">${esc(x.title)}</span>`).join('')||'<p class="mut">Guruh topilmadi. Akkauntingiz guruhga a\'zo ekanini tekshiring.</p>'}</div></div>
+ <div class="card"><h2>2. Guruhlarni tanlang <span id="cnt" class="mut"></span></h2><div id="gs" class="mut" style="margin-bottom:6px">Guruhlar yuklanmoqda…</div>
+ <input id="q" placeholder="Guruhni qidirish..."><button class="s g" id="all">Ko'ringanlarini tanlash</button> <button class="s g" id="none">Tozalash</button> <button class="s g" id="rf">🔄 Yangilash</button>
+ <div id="gl" style="margin-top:6px"></div></div>
  <div class="card"><h2>3. Necha daqiqada bir yuborilsin?</h2><input id="iv" type="number" min="${st.min}" value="${Math.max(st.iv,st.min)}">
- <p class="mut" style="margin-bottom:8px">"Boshlash" bosilgach birinchi yuborish darhol bo'ladi, keyin har shuncha daqiqada takrorlanadi.</p><button id="mk" style="width:100%">🚀 Boshlash</button></div>`;
- const cnt=()=>$('#cnt').textContent='('+st.sel.size+' ta)';cnt();
+ <p class="mut" style="margin-bottom:8px">"Boshlash" bosilgach birinchi yuborish darhol bo'ladi, keyin har shuncha daqiqada takrorlanadi. Eng kamida ${st.min} daqiqa.</p><button id="mk" style="width:100%">🚀 Boshlash</button></div>`;
+ const cnt=()=>$('#cnt').textContent='('+st.sel.size+' ta tanlandi)';
  V.querySelectorAll('.item').forEach(i=>i.onclick=()=>{st.msg=+i.dataset.m;st.title=i.dataset.t;V.querySelectorAll('.item').forEach(x=>x.classList.toggle('on',x===i))});
- const chips=[...V.querySelectorAll('[data-g]')];
- chips.forEach(c=>c.onclick=()=>{const i=+c.dataset.g;st.sel.has(i)?st.sel.delete(i):st.sel.set(i,c.dataset.t);c.classList.toggle('on',st.sel.has(i));cnt()});
- $('#q').oninput=e=>chips.forEach(c=>c.style.display=c.dataset.t.toLowerCase().includes(e.target.value.toLowerCase())?'':'none');
- $('#all').onclick=()=>{chips.filter(c=>c.style.display!='none').forEach(c=>{st.sel.set(+c.dataset.g,c.dataset.t);c.classList.add('on')});cnt()};
- $('#none').onclick=()=>{st.sel.clear();chips.forEach(c=>c.classList.remove('on'));cnt()};
+ const flt=()=>{const v=$('#q').value.toLowerCase();V.querySelectorAll('[data-g]').forEach(c=>c.style.display=c.dataset.t.toLowerCase().includes(v)?'':'none')};
+ const draw=gl=>{$('#gl').innerHTML=gl.map(x=>`<span class="chip ${st.sel.has(x.id)?'on':''}" data-g="${x.id}" data-t="${esc(x.title)}">${esc(x.title)}</span>`).join('');
+  V.querySelectorAll('[data-g]').forEach(c=>c.onclick=()=>{const i=+c.dataset.g;st.sel.has(i)?st.sel.delete(i):st.sel.set(i,c.dataset.t);c.classList.toggle('on',st.sel.has(i));cnt()});flt();cnt()};
+ const poll=async r=>{if(tab!=='new'||!$('#gl'))return;
+  try{const g=await api('groups'+(r?'?refresh=1':''));if(tab!=='new'||!$('#gl'))return;draw(g.d);
+   $('#gs').textContent=g.err?'Xato: '+g.err:g.done?(g.d.length?'✅ '+g.d.length+' ta guruh topildi':'Guruh topilmadi. Akkauntingiz guruhga a\'zo ekanini tekshiring.'):'Yuklanmoqda… '+g.d.length+' ta topildi';
+   if(!g.done)setTimeout(()=>poll(),1500)}catch(e){$('#gs').textContent='Xato: '+e.message}};
+ poll();$('#rf').onclick=()=>{$('#gs').textContent='Yangilanmoqda…';poll(1)};
+ $('#q').oninput=flt;
+ $('#all').onclick=()=>{V.querySelectorAll('[data-g]').forEach(c=>{if(c.style.display!='none'){st.sel.set(+c.dataset.g,c.dataset.t);c.classList.add('on')}});cnt()};
+ $('#none').onclick=()=>{st.sel.clear();V.querySelectorAll('[data-g]').forEach(c=>c.classList.remove('on'));cnt()};
  $('#iv').oninput=e=>st.iv=e.target.value;
  $('#mk').onclick=async()=>{if(!st.msg)return toast('1-qadam: e\'lonni tanlang');if(!st.sel.size)return toast('2-qadam: guruh tanlang');
   const iv=parseInt($('#iv').value);if(!iv||iv<st.min)return toast('Eng kamida '+st.min+' daqiqa');

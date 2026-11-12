@@ -90,27 +90,40 @@ async def login(b: dict, u: int = Depends(auth)):
     except errors.PhoneCodeInvalidError: raise HTTPException(400, "Kod noto'g'ri.")
     except errors.PhoneCodeExpiredError: raise HTTPException(400, "Kod eskirgan. Qaytadan kod so'rang.")
     except Exception as e: raise HTTPException(400, str(e))
-    PH.pop(u, None); return {"ok": 1}
+    PH.pop(u, None); start_groups(u); return {"ok": 1}
 
 @r.post("/logout")
 async def logout(u: int = Depends(auth)):  # akkauntni uzish va barcha ma'lumotlarni o'chirish
     c = await cl(u)
     try: await c.log_out()
     except Exception: pass
-    CL.pop(u, None); GC.pop(u, None); PH.pop(u, None)
+    CL.pop(u, None); PH.pop(u, None)
+    g = GC.pop(u, None)
+    if g and g.get("task"): g["task"].cancel()
     for t in ("ads", "jobs", "sent", "replies"): q(f"delete from {t} where user_id=?", (u,))
     for f in glob.glob(os.path.join(SD, f"{u}.session*")):
         try: os.remove(f)
         except Exception: pass
     return {"ok": 1}
 
+async def load_groups(u, g):  # guruhlar fonda yuklanadi, kelgani sari ro'yxatga qo'shiladi
+    try:
+        c = await cl(u)
+        async for d in c.iter_dialogs():
+            if d.is_group: g["d"].append({"id": d.id, "title": d.title})
+    except Exception as e:
+        g["err"] = f"{type(e).__name__}: {e}"; print("groups xato:", g["err"])
+    g["done"] = True; g["t"] = time.time()
+
+def start_groups(u):
+    g = GC[u] = {"d": [], "done": False, "err": None, "t": time.time()}
+    g["task"] = asyncio.create_task(load_groups(u, g)); return g
+
 @r.get("/groups")
 async def groups(refresh: int = 0, u: int = Depends(auth)):
     g = GC.get(u)
-    if refresh or not g or time.time() - g["t"] > 600:
-        c = await cl(u)
-        GC[u] = g = {"t": time.time(), "d": [{"id": d.id, "title": d.title} async for d in c.iter_dialogs() if d.is_group]}
-    return g["d"]
+    if refresh or not g or (g["done"] and (g["err"] or time.time() - g["t"] > 600)): g = start_groups(u)
+    return {"d": g["d"], "done": g["done"], "err": g["err"]}
 
 @r.get("/saved")
 async def saved(u: int = Depends(auth)):  # e'lonlar "Saqlangan xabarlar" dan olinadi
