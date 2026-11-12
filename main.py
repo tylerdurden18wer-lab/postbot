@@ -42,6 +42,7 @@ async def on_err(request, exc): return JSONResponse({"detail": f"{type(exc).__na
 
 r = APIRouter(prefix="/api", dependencies=[Depends(auth)])
 PH = {}
+ERR = {}
 WEBAPP_URL = os.environ.get("WEBAPP_URL", "").strip()
 bot = TelegramClient(os.path.join(DATA, "bot"), API_ID, API_HASH)
 
@@ -120,11 +121,12 @@ def del_ad(i: int): q("delete from ads where id=?", (i,)); q("delete from jobs w
 
 @r.get("/jobs")
 def jobs():
-    return [dict(j, chats=json.loads(j["chats"]), title=(q("select title from ads where id=?", (j["ad_id"],)) or [{"title": "?"}])[0]["title"])
+    return [dict(j, err=ERR.get(j["id"]), chats=json.loads(j["chats"]), title=(q("select title from ads where id=?", (j["ad_id"],)) or [{"title": "?"}])[0]["title"])
             for j in q("select * from jobs")]
 @r.post("/jobs")
 def add_job(b: dict):
-    q("insert into jobs(ad_id,chats,interval) values(?,?,?)", (b["ad_id"], json.dumps(b["chats"]), max(1, int(b["interval"])))); return {"ok": 1}
+    c = D.execute("insert into ads(msg_id,title) values(?,?)", (b["msg_id"], b.get("title") or "E'lon")); D.commit()
+    q("insert into jobs(ad_id,chats,interval) values(?,?,?)", (c.lastrowid, json.dumps(b["chats"]), max(1, int(b["interval"])))); return {"ok": 1}
 @r.post("/jobs/{i}/toggle")
 def toggle(i: int): q("update jobs set active=1-active where id=?", (i,)); return {"ok": 1}
 @r.post("/jobs/{i}/now")
@@ -151,17 +153,23 @@ async def on_msg(e):  # bizning e'longa reply qilganlarni sanash
     if rt and e.is_group and q("select 1 from sent where chat_id=? and msg_id=?", (e.chat_id, rt.reply_to_msg_id)):
         q("insert into replies(chat_id,msg_id,user_id,ts) values(?,?,?,?)", (e.chat_id, rt.reply_to_msg_id, e.sender_id, time.time()))
 
+async def send(c, m):
+    try: return await tg.send_message(c["id"], m)
+    except ValueError:  # guruh keshda yo'q bo'lsa
+        await tg.get_dialogs(); return await tg.send_message(c["id"], m)
+
 async def run_job(j):
+    ERR.pop(j["id"], None)
     ad = q("select * from ads where id=?", (j["ad_id"],))
     if not ad: return
     m = await tg.get_messages("me", ids=ad[0]["msg_id"])
     if not m: return
     for c in json.loads(j["chats"]):
         try:
-            s = await tg.send_message(c["id"], m)  # matn, premium emoji, video, sticker - aynan o'zidek
+            s = await send(c, m)  # matn, premium emoji, video, sticker - aynan o'zidek
             q("insert into sent(ad_id,chat_id,chat_title,msg_id,ts) values(?,?,?,?,?)", (j["ad_id"], c["id"], c["title"], s.id, time.time()))
         except errors.FloodWaitError as e: await asyncio.sleep(e.seconds + 1)
-        except Exception as e: print("xato", c["title"], e)
+        except Exception as e: ERR[j["id"]] = f'{c["title"]}: {type(e).__name__}: {e}'; print("xato", c["title"], e)
         await asyncio.sleep(random.uniform(5, 12))  # ban bo'lmasligi uchun pauza
 
 async def scheduler():

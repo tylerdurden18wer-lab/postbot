@@ -30,7 +30,7 @@ nav button{flex:1;background:none;color:var(--mut);padding:9px 4px;font-size:13p
 .bar{height:6px;border-radius:9px;background:linear-gradient(90deg,var(--b),var(--a));margin-top:6px;transition:width .8s}
 .toast{position:fixed;top:14px;left:50%;transform:translateX(-50%);background:var(--tx);color:var(--bg);padding:9px 16px;border-radius:99px;animation:in .3s}
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
-</style></head><body>
+.item{padding:10px 12px;border-radius:12px;margin:5px 0;background:var(--card);border:1px solid transparent;cursor:pointer;transition:.2s}.item.on{border-color:var(--a);background:rgba(79,209,197,.22)}.err{color:var(--bad);font-size:13px;margin-top:6px}</style></head><body>
 <div class="blob b1"></div><div class="blob b2"></div>
 <h1>📣 PostBot</h1><div id="who" class="mut" style="margin:-8px 0 10px"></div><div id="v"></div>
 <nav id="nav" hidden></nav>
@@ -41,10 +41,11 @@ const esc=s=>String(s??'').replace(/[&<>"]/g,c=({'&':'&amp;','<':'&lt;','>':'&gt
 async function api(p,m='GET',b){const c=new AbortController();setTimeout(()=>c.abort(),90000);const r=await fetch('/api/'+p,{method:m,signal:c.signal,headers:{'X-Init-Data':tg.initData,'Content-Type':'application/json'},body:b?JSON.stringify(b):undefined}).catch(()=>{throw new Error('Server javob bermadi (vaqt tugadi)')});
  const j=await r.json().catch(()=>({}));if(!r.ok){const m=j.detail||('Xato '+r.status);toast(m);throw new Error(m)}return j}
 function toast(t){const e=document.createElement('div');e.className='toast';e.textContent=t;document.body.append(e);setTimeout(()=>e.remove(),5000)}
-const TABS=[['ads','📝 E\'lonlar'],['job','⏰ Yuborish'],['stat','📊 Statistika']];let tab='ads',sel=new Map(),adSel=null;
+const TABS=[['new','🚀 Yuborish'],['jobs','📋 Vazifalar'],['stat','📊 Statistika']];let tab='new';
+const st={msg:null,title:'',sel:new Map(),iv:60};
 function nav(){const n=$('#nav');n.hidden=false;n.innerHTML=TABS.map(([k,t])=>`<button class="${k==tab?'on':''}" data-k="${k}">${t}</button>`).join('');
  n.querySelectorAll('button').forEach(b=>b.onclick=()=>{tab=b.dataset.k;nav();show()})}
-async function boot(){const s=await api('state');if(s.auth){$('#who').textContent='👤 '+(s.me||'?')+' · v'+s.v;nav();show()}else login()}
+async function boot(){const s=await api('state');if(s.auth){$('#who').textContent='👤 '+(s.me||'?');nav();show()}else login()}
 function login(){V.innerHTML=`<div class="card"><h2>Telegram akkauntga kirish</h2><p class="mut" style="margin-bottom:10px">Telefon raqamingizni kiriting. Kod Telegram'ga keladi.</p>
  <input id="ph" placeholder="+998901234567" inputmode="tel"><button id="go" style="width:100%">Kod yuborish</button></div>`;
  $('#go').onclick=async()=>{await api('send_code','POST',{phone:$('#ph').value.trim()});
@@ -52,28 +53,34 @@ function login(){V.innerHTML=`<div class="card"><h2>Telegram akkauntga kirish</h
   <button id="ok" style="width:100%">Kirish</button></div>`;
   $('#ok').onclick=async()=>{const r=await api('login','POST',{code:$('#cd').value.trim(),password:$('#pw').value});
    if(r.need_password)return toast('2 bosqichli parolni kiriting');toast('Kirildi ✅');boot()}}}
-async function show(){V.innerHTML='<div class="card mut">Yuklanmoqda… (guruhlar ko\'p bo\'lsa 1 daqiqagacha cho\'zilishi mumkin)</div>';try{await ({ads:vAds,job:vJob,stat:vStat})[tab]()}catch(e){V.innerHTML=`<div class="card"><b>Xato</b><div class="mut">${esc(e.message)}</div></div>`}}
-async function vAds(){const [a,s]=await Promise.all([api('ads'),api('saved')]);
- V.innerHTML=`<p class="mut" style="margin-bottom:8px">E'lonni avval Telegram'dagi <b>Saqlangan xabarlar</b> (Saved Messages) ga yozing: matn, video, premium emoji, stiker — hammasi aynan o'zidek yuboriladi.</p>
- <h2>Mening e'lonlarim</h2>${a.map(x=>`<div class="card row"><b>${esc(x.title)}</b><button class="s d" data-d="${x.id}">O'chirish</button></div>`).join('')||'<p class="mut">Hali yo\'q</p>'}
- <h2>Saqlangan xabarlardan qo'shish</h2>${s.map(m=>`<div class="card row"><div><span class="mut">${m.kind}</span><div>${esc(m.text)||'(matnsiz)'}</div></div><button class="s" data-m="${m.id}" data-t="${esc(m.text.slice(0,25)||m.kind)}">Qo'shish</button></div>`).join('')}`;
- V.querySelectorAll('[data-d]').forEach(b=>b.onclick=async()=>{await api('ads/'+b.dataset.d,'DELETE');vAds()});
- V.querySelectorAll('[data-m]').forEach(b=>b.onclick=async()=>{const t=prompt('E\'lon nomi',b.dataset.t);if(t===null)return;await api('ads','POST',{msg_id:+b.dataset.m,title:t});toast('Qo\'shildi ✅');vAds()})}
-async function vJob(){const [a,g,j]=await Promise.all([api('ads'),api('groups'),api('jobs')]);
- V.innerHTML=`<h2>Yangi vazifa</h2><div class="card"><div class="mut">1. E'lonni tanlang</div>
- ${a.map(x=>`<span class="chip ${adSel==x.id?'on':''}" data-a="${x.id}">${esc(x.title)}</span>`).join('')||'<p class="mut">Avval e\'lon qo\'shing</p>'}
- <div class="mut" style="margin-top:10px">2. Guruhlarni tanlang (${sel.size})</div><button class="s g" id="all">Hammasi</button>
- ${g.length?'':'<p class="mut">Guruhlar topilmadi. Akkauntingiz guruhlarga a\'zo ekanini tekshiring.</p>'}<div>${g.map(x=>`<span class="chip ${sel.has(x.id)?'on':''}" data-g="${x.id}" data-t="${esc(x.title)}">${esc(x.title)}</span>`).join('')}</div>
- <div class="mut" style="margin:10px 0 4px">3. Har necha daqiqada takrorlansin</div><input id="iv" type="number" value="60" min="1">
- <button id="mk" style="width:100%">Vazifani yaratish</button></div>
- <h2>Vazifalar</h2>${j.map(x=>`<div class="card"><div class="row"><b>${esc(x.title)}</b><span class="mut">${x.chats.length} guruh · ${x.interval} daq</span></div>
- <div class="row" style="margin-top:8px"><button class="s" data-n="${x.id}">Hozir yuborish</button><button class="s g" data-p="${x.id}">${x.active?'⏸ To\'xtatish':'▶️ Yoqish'}</button><button class="s d" data-x="${x.id}">🗑</button></div></div>`).join('')}`;
- V.querySelectorAll('[data-a]').forEach(c=>c.onclick=()=>{adSel=+c.dataset.a;vJob()});
- V.querySelectorAll('[data-g]').forEach(c=>c.onclick=()=>{const i=+c.dataset.g;sel.has(i)?sel.delete(i):sel.set(i,c.dataset.t);c.classList.toggle('on');vJob.keep=1;vJob()});
- $('#all').onclick=()=>{g.forEach(x=>sel.set(x.id,x.title));vJob()};
- $('#mk').onclick=async()=>{if(!adSel||!sel.size)return toast('E\'lon va guruh tanlang');
-  await api('jobs','POST',{ad_id:adSel,chats:[...sel].map(([id,title])=>({id,title})),interval:$('#iv').value});sel.clear();toast('Yaratildi ✅');vJob()};
- const act=(k,f)=>V.querySelectorAll(`[data-${k}]`).forEach(b=>b.onclick=async()=>{await f(b.dataset[k]);vJob()});
+async function show(){V.innerHTML='<div class="card mut">Yuklanmoqda… (guruhlar ko\'p bo\'lsa 1 daqiqagacha cho\'zilishi mumkin)</div>';
+ try{await ({new:vNew,jobs:vJobs,stat:vStat})[tab]()}catch(e){V.innerHTML=`<div class="card"><b>Xato</b><div class="mut">${esc(e.message)}</div></div>`}}
+async function vNew(){const [s,g]=await Promise.all([api('saved'),api('groups')]);
+ V.innerHTML=`<div class="card"><h2>1. E'lonni tanlang</h2><p class="mut">E'lonni Telegram'dagi <b>Saqlangan xabarlar</b>ga yozing (video, premium emoji, stiker ham bo'ladi), keyin shu yerda tanlang.</p>
+ ${s.map(m=>`<div class="item ${st.msg==m.id?'on':''}" data-m="${m.id}" data-t="${esc(m.text.slice(0,25)||m.kind)}"><span class="mut">${m.kind}</span> ${esc(m.text)||'(matnsiz)'}</div>`).join('')||'<p class="mut">Saqlangan xabarlar bo\'sh</p>'}</div>
+ <div class="card"><h2>2. Guruhlarni tanlang <span id="cnt" class="mut"></span></h2><input id="q" placeholder="Guruhni qidirish...">
+ <button class="s g" id="all">Ko'ringanlarini tanlash</button> <button class="s g" id="none">Tozalash</button>
+ <div id="gl" style="margin-top:6px">${g.map(x=>`<span class="chip ${st.sel.has(x.id)?'on':''}" data-g="${x.id}" data-t="${esc(x.title)}">${esc(x.title)}</span>`).join('')||'<p class="mut">Guruh topilmadi. Akkauntingiz guruhga a\'zo ekanini tekshiring.</p>'}</div></div>
+ <div class="card"><h2>3. Necha daqiqada bir yuborilsin?</h2><input id="iv" type="number" min="1" value="${st.iv}">
+ <p class="mut" style="margin-bottom:8px">"Boshlash" bosilgach birinchi yuborish darhol bo'ladi, keyin har shuncha daqiqada takrorlanadi.</p><button id="mk" style="width:100%">🚀 Boshlash</button></div>`;
+ const cnt=()=>$('#cnt').textContent='('+st.sel.size+' ta)';cnt();
+ V.querySelectorAll('.item').forEach(i=>i.onclick=()=>{st.msg=+i.dataset.m;st.title=i.dataset.t;V.querySelectorAll('.item').forEach(x=>x.classList.toggle('on',x===i))});
+ const chips=[...V.querySelectorAll('[data-g]')];
+ chips.forEach(c=>c.onclick=()=>{const i=+c.dataset.g;st.sel.has(i)?st.sel.delete(i):st.sel.set(i,c.dataset.t);c.classList.toggle('on',st.sel.has(i));cnt()});
+ $('#q').oninput=e=>chips.forEach(c=>c.style.display=c.dataset.t.toLowerCase().includes(e.target.value.toLowerCase())?'':'none');
+ $('#all').onclick=()=>{chips.filter(c=>c.style.display!='none').forEach(c=>{st.sel.set(+c.dataset.g,c.dataset.t);c.classList.add('on')});cnt()};
+ $('#none').onclick=()=>{st.sel.clear();chips.forEach(c=>c.classList.remove('on'));cnt()};
+ $('#iv').oninput=e=>st.iv=e.target.value;
+ $('#mk').onclick=async()=>{if(!st.msg)return toast('1-qadam: e\'lonni tanlang');if(!st.sel.size)return toast('2-qadam: guruh tanlang');
+  const iv=parseInt($('#iv').value);if(!iv||iv<1)return toast('Daqiqani kiriting');
+  await api('jobs','POST',{msg_id:st.msg,title:st.title,chats:[...st.sel].map(([id,title])=>({id,title})),interval:iv});
+  st.msg=null;st.sel.clear();toast('Boshlandi ✅');tab='jobs';nav();show()}}
+async function vJobs(){const j=await api('jobs');
+ V.innerHTML=j.map(x=>`<div class="card"><div class="row"><b>${esc(x.title)}</b><span class="mut">${x.chats.length} guruh · ${x.interval} daq</span></div>
+ <div class="mut">${x.active?'Keyingi yuborish: '+new Date(Math.max(x.next_run,Date.now()/1000)*1000).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}):'To\'xtatilgan'}</div>
+ ${x.err?`<div class="err">Xato: ${esc(x.err)}</div>`:''}
+ <div class="row" style="margin-top:8px"><button class="s" data-n="${x.id}">Hozir yuborish</button><button class="s g" data-p="${x.id}">${x.active?'⏸ To\'xtatish':'▶️ Yoqish'}</button><button class="s d" data-x="${x.id}">🗑</button></div></div>`).join('')||'<div class="card mut">Hali vazifa yo\'q. "Yuborish" bo\'limidan boshlang.</div>';
+ const act=(k,f)=>V.querySelectorAll(`[data-${k}]`).forEach(b=>b.onclick=async()=>{await f(b.dataset[k]);toast('Bajarildi');show()});
  act('n',i=>api(`jobs/${i}/now`,'POST'));act('p',i=>api(`jobs/${i}/toggle`,'POST'));act('x',i=>api('jobs/'+i,'DELETE'))}
 async function vStat(){const s=await api('stats'),mx=Math.max(1,...s.chats.map(c=>c.n));
  V.innerHTML=`<div class="card row"><div class="stat"><div class="big">${s.total}</div><div class="mut">yuborildi</div></div><div class="stat"><div class="big">${s.replies}</div><div class="mut">reply</div></div><div class="stat"><div class="big">${s.people}</div><div class="mut">odam</div></div></div>
