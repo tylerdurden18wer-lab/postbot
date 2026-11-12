@@ -34,7 +34,13 @@ def auth(x_init_data: str = Header("")):
     if not ok or json.loads(d.get("user", "{}")).get("id") != OWNER:
         raise HTTPException(403, "Ruxsat yo'q")
 
-app = FastAPI(); r = APIRouter(prefix="/api", dependencies=[Depends(auth)])
+from fastapi.responses import JSONResponse
+app = FastAPI()
+
+@app.exception_handler(Exception)
+async def on_err(request, exc): return JSONResponse({"detail": f"{type(exc).__name__}: {exc}"}, status_code=500)
+
+r = APIRouter(prefix="/api", dependencies=[Depends(auth)])
 PH = {}
 WEBAPP_URL = os.environ.get("WEBAPP_URL", "").strip()
 bot = TelegramClient(os.path.join(DATA, "bot"), API_ID, API_HASH)
@@ -45,13 +51,17 @@ async def start_cmd(e):  # /start bosilganda Mini App tugmasini yuboradi
         if e.sender_id != OWNER: return await e.respond("Bu bot shaxsiy.")
         await e.respond("PostBot ishlayapti ✅")
         if not WEBAPP_URL: return await e.respond("WEBAPP_URL sozlanmagan (Variables).")
-        from telethon import types
-        mk = types.ReplyInlineMarkup([types.KeyboardButtonRow([types.KeyboardButtonWebView("📣 Ochish", WEBAPP_URL)])])
-        await e.respond("Ilovani ochish uchun tugmani bosing 👇", buttons=mk)
+        await asyncio.to_thread(send_btn, e.chat_id)
     except Exception as ex:
         print("start xato:", repr(ex))
         try: await e.respond(f"Xato: {ex}")
         except Exception: pass
+
+def send_btn(chat_id):
+    import urllib.request
+    d = json.dumps({"chat_id": chat_id, "text": "Ilovani ochish uchun tugmani bosing 👇",
+        "reply_markup": {"inline_keyboard": [[{"text": "📣 Ochish", "web_app": {"url": WEBAPP_URL}}]]}}).encode()
+    urllib.request.urlopen(urllib.request.Request(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", d, {"Content-Type": "application/json"}))
 
 def set_menu():  # chat pastidagi menyu tugmasini avtomatik o'rnatadi
     import urllib.request
@@ -62,7 +72,10 @@ def set_menu():  # chat pastidagi menyu tugmasini avtomatik o'rnatadi
 def index(): return FileResponse("index.html")
 
 @r.get("/state")
-async def state(): return {"auth": await tg.is_user_authorized()}
+async def state():
+    import telethon
+    ok = bool(await tg.is_user_authorized()); me = await tg.get_me() if ok else None
+    return {"auth": ok, "me": getattr(me, "first_name", None), "v": telethon.__version__}
 
 @r.post("/send_code")
 async def send_code(b: dict):

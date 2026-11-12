@@ -24,7 +24,7 @@ button.d{background:var(--bad)}
 .chip{display:inline-block;padding:8px 12px;margin:3px;border-radius:99px;background:var(--card);border:1px solid transparent;transition:.2s;cursor:pointer}
 .chip.on{background:linear-gradient(135deg,var(--b),var(--a));color:#fff;transform:scale(1.04)}
 nav{position:fixed;bottom:0;left:0;right:0;display:flex;gap:6px;padding:10px 12px calc(10px + env(safe-area-inset-bottom));background:var(--bg);border-top:1px solid rgba(255,255,255,.1)}
-nav button{flex:1;background:none;color:var(--mut);padding:9px 4px;font-size:13px}nav button.on{color:#fff;background:var(--card)}
+nav button{flex:1;background:none;color:var(--mut);padding:9px 4px;font-size:13px}nav button.on{color:var(--tx);background:var(--card);box-shadow:0 0 0 1px rgba(124,108,255,.5)}
 .big{font-size:30px;font-weight:800;background:linear-gradient(135deg,var(--b),var(--a));-webkit-background-clip:text;background-clip:text;color:transparent}
 .stat{flex:1;text-align:center}
 .bar{height:6px;border-radius:9px;background:linear-gradient(90deg,var(--b),var(--a));margin-top:6px;transition:width .8s}
@@ -32,19 +32,19 @@ nav button{flex:1;background:none;color:var(--mut);padding:9px 4px;font-size:13p
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style></head><body>
 <div class="blob b1"></div><div class="blob b2"></div>
-<h1>📣 PostBot</h1><div id="v"></div>
+<h1>📣 PostBot</h1><div id="who" class="mut" style="margin:-8px 0 10px"></div><div id="v"></div>
 <nav id="nav" hidden></nav>
 <script>
 const tg=Telegram.WebApp;tg.ready();tg.expand();
 const $=s=>document.querySelector(s),V=$('#v');
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'})[c]);
 async function api(p,m='GET',b){const r=await fetch('/api/'+p,{method:m,headers:{'X-Init-Data':tg.initData,'Content-Type':'application/json'},body:b?JSON.stringify(b):undefined});
- const j=await r.json().catch(()=>({}));if(!r.ok){toast(j.detail||'Xato');throw 0}return j}
-function toast(t){const e=document.createElement('div');e.className='toast';e.textContent=t;document.body.append(e);setTimeout(()=>e.remove(),2500)}
+ const j=await r.json().catch(()=>({}));if(!r.ok){const m=j.detail||('Xato '+r.status);toast(m);throw new Error(m)}return j}
+function toast(t){const e=document.createElement('div');e.className='toast';e.textContent=t;document.body.append(e);setTimeout(()=>e.remove(),5000)}
 const TABS=[['ads','📝 E\'lonlar'],['job','⏰ Yuborish'],['stat','📊 Statistika']];let tab='ads',sel=new Map(),adSel=null;
 function nav(){const n=$('#nav');n.hidden=false;n.innerHTML=TABS.map(([k,t])=>`<button class="${k==tab?'on':''}" data-k="${k}">${t}</button>`).join('');
  n.querySelectorAll('button').forEach(b=>b.onclick=()=>{tab=b.dataset.k;nav();show()})}
-async function boot(){const s=await api('state');if(s.auth){nav();show()}else login()}
+async function boot(){const s=await api('state');if(s.auth){$('#who').textContent='👤 '+(s.me||'?')+' · v'+s.v;nav();show()}else login()}
 function login(){V.innerHTML=`<div class="card"><h2>Telegram akkauntga kirish</h2><p class="mut" style="margin-bottom:10px">Telefon raqamingizni kiriting. Kod Telegram'ga keladi.</p>
  <input id="ph" placeholder="+998901234567" inputmode="tel"><button id="go" style="width:100%">Kod yuborish</button></div>`;
  $('#go').onclick=async()=>{await api('send_code','POST',{phone:$('#ph').value.trim()});
@@ -52,7 +52,7 @@ function login(){V.innerHTML=`<div class="card"><h2>Telegram akkauntga kirish</h
   <button id="ok" style="width:100%">Kirish</button></div>`;
   $('#ok').onclick=async()=>{const r=await api('login','POST',{code:$('#cd').value.trim(),password:$('#pw').value});
    if(r.need_password)return toast('2 bosqichli parolni kiriting');toast('Kirildi ✅');boot()}}}
-function show(){({ads:vAds,job:vJob,stat:vStat})[tab]()}
+async function show(){try{await ({ads:vAds,job:vJob,stat:vStat})[tab]()}catch(e){V.innerHTML=`<div class="card"><b>Xato</b><div class="mut">${esc(e.message)}</div></div>`}}
 async function vAds(){const [a,s]=await Promise.all([api('ads'),api('saved')]);
  V.innerHTML=`<p class="mut" style="margin-bottom:8px">E'lonni avval Telegram'dagi <b>Saqlangan xabarlar</b> (Saved Messages) ga yozing: matn, video, premium emoji, stiker — hammasi aynan o'zidek yuboriladi.</p>
  <h2>Mening e'lonlarim</h2>${a.map(x=>`<div class="card row"><b>${esc(x.title)}</b><button class="s d" data-d="${x.id}">O'chirish</button></div>`).join('')||'<p class="mut">Hali yo\'q</p>'}
@@ -63,7 +63,7 @@ async function vJob(){const [a,g,j]=await Promise.all([api('ads'),api('groups'),
  V.innerHTML=`<h2>Yangi vazifa</h2><div class="card"><div class="mut">1. E'lonni tanlang</div>
  ${a.map(x=>`<span class="chip ${adSel==x.id?'on':''}" data-a="${x.id}">${esc(x.title)}</span>`).join('')||'<p class="mut">Avval e\'lon qo\'shing</p>'}
  <div class="mut" style="margin-top:10px">2. Guruhlarni tanlang (${sel.size})</div><button class="s g" id="all">Hammasi</button>
- <div>${g.map(x=>`<span class="chip ${sel.has(x.id)?'on':''}" data-g="${x.id}" data-t="${esc(x.title)}">${esc(x.title)}</span>`).join('')}</div>
+ ${g.length?'':'<p class="mut">Guruhlar topilmadi. Akkauntingiz guruhlarga a\'zo ekanini tekshiring.</p>'}<div>${g.map(x=>`<span class="chip ${sel.has(x.id)?'on':''}" data-g="${x.id}" data-t="${esc(x.title)}">${esc(x.title)}</span>`).join('')}</div>
  <div class="mut" style="margin:10px 0 4px">3. Har necha daqiqada takrorlansin</div><input id="iv" type="number" value="60" min="1">
  <button id="mk" style="width:100%">Vazifani yaratish</button></div>
  <h2>Vazifalar</h2>${j.map(x=>`<div class="card"><div class="row"><b>${esc(x.title)}</b><span class="mut">${x.chats.length} guruh · ${x.interval} daq</span></div>

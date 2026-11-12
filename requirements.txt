@@ -1,4 +1,4 @@
 fastapi
 uvicorn
-telethon
+telethon>=1.36,<2
 cryptg
