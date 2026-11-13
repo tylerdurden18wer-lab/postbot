@@ -7,7 +7,8 @@ import config, tgclients as T
 from db import q, D
 
 r = router = APIRouter(prefix="/api")
-ERR = {}  # vazifa xatolari (worker yozadi)
+ERR = {}  # vazifa xatolari: {job_id: {"_": umumiy, "guruh nomi": xato}} (worker yozadi)
+def first_err(jid): return next(iter((ERR.get(jid) or {}).values()), None)
 
 def auth(x_init_data: str = Header("")):  # Telegram Mini App imzosini tekshiradi -> foydalanuvchi ID
     d = dict(parse_qsl(x_init_data)); h = d.pop("hash", "")
@@ -95,16 +96,43 @@ def del_post(i: int, u: int = Depends(auth)):
 
 @r.get("/jobs")
 def jobs(u: int = Depends(auth)):
-    return [dict(j, err=ERR.get(j["id"]), chats=json.loads(j["chats"])) for j in
-            q("select j.*, a.title, a.preview, a.kind from jobs j left join ads a on a.id=j.ad_id where j.user_id=? order by j.id desc", (u,))]
+    return [dict(j, err=first_err(j["id"]), chats=json.loads(j["chats"])) for j in
+            q("""select j.*, a.title, a.preview, a.kind,
+                 (select count(*) from sent s where s.job_id=j.id) sent_n, (select max(ts) from sent s where s.job_id=j.id) last
+                 from jobs j left join ads a on a.id=j.ad_id where j.user_id=? order by j.id desc""", (u,))]
 
-@r.post("/jobs")
-def add_job(b: dict, u: int = Depends(auth)):
+def check_job(b, u):
     if int(b["interval"]) < config.MIN_INTERVAL: raise HTTPException(400, f"Interval eng kamida {config.MIN_INTERVAL} daqiqa bo'lishi kerak.")
     if not b["chats"] or len(b["chats"]) > config.MAX_CHATS: raise HTTPException(400, f"Guruhlar soni 1 dan {config.MAX_CHATS} gacha bo'lishi kerak.")
     if not q("select 1 from ads where id=? and user_id=?", (b["ad_id"], u)): raise HTTPException(400, "Post topilmadi.")
+
+@r.post("/jobs")
+def add_job(b: dict, u: int = Depends(auth)):
+    check_job(b, u)
     if q("select count(*) n from jobs where user_id=?", (u,))[0]["n"] >= config.MAX_JOBS: raise HTTPException(400, f"Eng ko'pi bilan {config.MAX_JOBS} ta vazifa.")
     q("insert into jobs(user_id,ad_id,chats,interval) values(?,?,?,?)", (u, b["ad_id"], json.dumps(b["chats"]), int(b["interval"]))); return {"ok": 1}
+
+@r.put("/jobs/{i}")
+def edit_job(i: int, b: dict, u: int = Depends(auth)):  # post, guruhlar va vaqtni tahrirlash
+    if not q("select 1 from jobs where id=? and user_id=?", (i, u)): raise HTTPException(404, "Vazifa topilmadi.")
+    check_job(b, u); iv = int(b["interval"])
+    q("update jobs set ad_id=?, chats=?, interval=?, next_run=min(next_run, ?) where id=?", (b["ad_id"], json.dumps(b["chats"]), iv, time.time() + iv * 60, i)); return {"ok": 1}
+
+@r.get("/jobs/{i}")
+def job_detail(i: int, u: int = Depends(auth)):  # bitta vazifaning o'z statistikasi
+    row = q("select j.*, a.title, a.preview, a.kind from jobs j left join ads a on a.id=j.ad_id where j.id=? and j.user_id=?", (i, u))
+    if not row: raise HTTPException(404, "Vazifa topilmadi.")
+    j = dict(row[0], chats=json.loads(row[0]["chats"])); errs = ERR.get(i) or {}
+    z = "exists(select 1 from sent z where z.job_id=? and z.chat_id=r.chat_id and z.msg_id=r.msg_id)"
+    tot = q("select count(*) n, max(ts) last from sent where job_id=? and user_id=?", (i, u))[0]
+    rp = q(f"select count(*) n, count(distinct sender) p from replies r where r.user_id=? and {z}", (u, i))[0]
+    per = {x["chat_id"]: x for x in q(f"""select chat_id, count(*) n, max(ts) last,
+        (select count(*) from replies r where r.user_id=s.user_id and r.chat_id=s.chat_id and {z}) rep,
+        (select count(distinct sender) from replies r where r.user_id=s.user_id and r.chat_id=s.chat_id and {z}) ppl
+        from sent s where s.job_id=? and s.user_id=? group by chat_id""", (i, i, i, u))}
+    groups = [{"id": c["id"], "title": c["title"], "n": per.get(c["id"], {}).get("n", 0), "last": per.get(c["id"], {}).get("last"),
+               "rep": per.get(c["id"], {}).get("rep", 0), "ppl": per.get(c["id"], {}).get("ppl", 0), "err": errs.get(c["title"])} for c in j["chats"]]
+    return {"job": j, "total": tot["n"], "last": tot["last"], "replies": rp["n"], "people": rp["p"], "err": errs.get("_"), "groups": groups}
 
 @r.post("/jobs/{i}/toggle")
 def toggle(i: int, u: int = Depends(auth)): q("update jobs set active=1-active where id=? and user_id=?", (i, u)); return {"ok": 1}

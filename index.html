@@ -65,7 +65,7 @@ nav button{flex:1;background:none;color:var(--mut);padding:9px 2px;font-size:12p
 const tg=Telegram.WebApp;tg.ready();tg.expand();try{tg.setHeaderColor('#0a0f1f');tg.setBackgroundColor('#0a0f1f')}catch(e){}
 const $=s=>document.querySelector(s),V=$('#v');
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'})[c]);
-const st={msg:null,title:'',sel:new Map(),iv:60,min:5,me:'',authed:false,step:1,mode:'',ad:null};let tab='new',gen=0;
+const st={msg:null,title:'',sel:new Map(),iv:60,min:5,me:'',authed:false,step:1,mode:'',ad:null,edit:null,jobId:null};let tab='new',gen=0;
 function toast(t){const e=document.createElement('div');e.className='toast';e.textContent=t;document.body.append(e);setTimeout(()=>e.remove(),4500)}
 async function api(p,m='GET',b){const c=new AbortController();const to=setTimeout(()=>c.abort(),90000);
  const r=await fetch('/api/'+p,{method:m,signal:c.signal,headers:{'X-Init-Data':tg.initData,'Content-Type':'application/json'},body:b?JSON.stringify(b):undefined}).catch(()=>{throw new Error('Server javob bermadi')});clearTimeout(to);
@@ -74,7 +74,7 @@ async function api(p,m='GET',b){const c=new AbortController();const to=setTimeou
  if(!r.ok){const e=j.detail||('Xato '+r.status);toast(e);throw new Error(e)}return j}
 const TABS=[['new','➕ Yangi'],['jobs','📋 Vazifalar'],['stat','📊 Statistika'],['acc','👤 Akkaunt']];
 function nav(){const n=$('#nav');n.hidden=false;n.innerHTML=TABS.map(([k,t])=>`<button class="${k==tab?'on':''}" data-k="${k}">${t}</button>`).join('');
- n.querySelectorAll('button').forEach(b=>b.onclick=()=>{tab=b.dataset.k;nav();show()})}
+ n.querySelectorAll('button').forEach(b=>b.onclick=()=>{tab=b.dataset.k;if(tab==='jobs')st.jobId=null;nav();show()})}
 function setMe(n){$('#me').innerHTML=n?`<div class="av">${esc(n[0].toUpperCase())}</div>${esc(n)}`:''}
 async function boot(){gen++;try{const s=await api('state');st.min=s.min||5;
  if(s.auth){st.authed=true;st.me=s.me;setMe(s.me);nav();show()}else login()}catch(e){if(e.message!=='login')V.innerHTML=`<div class="card"><b>Xato</b><div class="err">${esc(e.message)}</div></div>`}}
@@ -98,12 +98,12 @@ async function doLogin(pw){const b=$('#ok');b.disabled=true;
 async function show(){const g=++gen;V.innerHTML='<div class="card"><div class="sk"></div><div class="sk"></div><div class="sk"></div></div>';
  try{await ({new:vNew,jobs:vJobs,stat:vStat,acc:vAcc})[tab](g)}catch(e){if(e.message!=='login'&&g===gen)V.innerHTML=`<div class="card"><b>Xato</b><div class="err">${esc(e.message)}</div></div>`}}
 const KI={matn:'📝',rasm:'🖼',video:'🎬',sticker:'🎭',fayl:'📎'};
-const pills=n=>`<div class="pills">${['Post','Guruhlar','Vaqt'].map((t,i)=>`<div class="pill ${i+1==n?'on':i+1<n?'ok':''}"><b>${i+1<n?'✓':i+1}</b>${t}</div>`).join('')}</div>`;
+const pills=n=>(st.edit?'<div class="mut" style="margin-bottom:8px">✏️ Tahrirlash rejimi · <a id="cx" style="color:var(--a);text-decoration:underline;cursor:pointer">bekor qilish</a></div>':'')+`<div class="pills">${['Post','Guruhlar','Vaqt'].map((t,i)=>`<div class="pill ${i+1==n?'on':i+1<n?'ok':''}"><b>${i+1<n?'✓':i+1}</b>${t}</div>`).join('')}</div>`;
 const ago=ts=>{const m=Math.round((Date.now()/1000-ts)/60);return m<1?'hozir':m<60?m+' daq oldin':m<1440?Math.round(m/60)+' soat oldin':Math.round(m/1440)+' kun oldin'};
 const fmt=m=>m%1440==0?(m/1440)+' kun':m%60==0?(m/60)+' soat':m+' daqiqa';
 async function vNew(g){if(st.mode=='done')return vDone();if(st.mode=='newpost')return vNewPost(g);if(st.step==2)return vStep2(g);if(st.step==3)return vStep3(g);return vStep1(g)}
 async function vStep1(g){const p=await api('posts');if(g!==gen)return;
- if(!st.ad&&p.length&&Date.now()/1000-p[0].created<600)st.ad=p[0].id;   // yangi qo'shilgan post avtomatik tanlanadi
+ if(!st.ad&&!st.edit&&p.length&&Date.now()/1000-p[0].created<600)st.ad=p[0].id;   // yangi qo'shilgan post avtomatik tanlanadi
  if(st.ad&&!p.find(x=>x.id==st.ad))st.ad=null;
  V.innerHTML=pills(1)+`<div class="card"><h2>Qaysi postni tarqatamiz?</h2><button id="np" style="width:100%;margin:4px 0 6px">➕ Yangi post qo'shish</button>
  ${p.map(x=>`<div class="post ${st.ad==x.id?'on':''}" data-a="${x.id}"><div class="pi">${KI[x.kind]||'📝'}</div><div class="pt"><div class="pp">${esc(x.preview)}</div><div class="mut">${esc(x.kind)} · ${ago(x.created)}</div></div><button class="s g" data-d="${x.id}">🗑</button></div>`).join('')
@@ -149,23 +149,45 @@ async function vStep3(g){const p=(await api('posts')).find(x=>x.id==st.ad);if(g!
  <div class="mut" style="margin:10px 0 4px">Yoki o'zingiz kiriting (daqiqada):</div><input id="iv" type="number" min="${st.min}" value="${st.iv}"></div>
  <div class="card"><h2>Xulosa</h2><div class="post" style="cursor:default"><div class="pi">${KI[p.kind]||'📝'}</div><div class="pt"><div class="pp">${esc(p.preview)}</div></div></div>
  <div id="sm" class="mut"></div><p class="mut" style="margin-top:6px">«Saqlash» bosilgach birinchi yuborish darhol bo'ladi, keyin shu vaqt oralig'ida takrorlanadi.</p></div>
- <div class="acts"><button class="g" id="bk">← Orqaga</button><button id="mk">✅ Saqlash va boshlash</button></div>`;
+ <div class="acts"><button class="g" id="bk">← Orqaga</button><button id="mk">${st.edit?'💾 O\'zgarishlarni saqlash':'✅ Saqlash va boshlash'}</button></div>`;
  const sm=()=>$('#sm').textContent=st.sel.size+' ta guruhga · har '+fmt(+st.iv||0)+' da';sm();
  V.querySelectorAll('.pre').forEach(c=>c.onclick=()=>{st.iv=+c.dataset.m;$('#iv').value=st.iv;V.querySelectorAll('.pre').forEach(x=>x.classList.toggle('on',x===c));sm()});
  $('#iv').oninput=e=>{st.iv=+e.target.value;V.querySelectorAll('.pre').forEach(x=>x.classList.toggle('on',+x.dataset.m==st.iv));sm()};
  $('#bk').onclick=()=>{st.step=2;show()};
  $('#mk').onclick=async e=>{const iv=parseInt($('#iv').value);if(!iv||iv<st.min)return toast('Eng kamida '+st.min+' daqiqa');e.target.disabled=true;
-  try{await api('jobs','POST',{ad_id:st.ad,chats:[...st.sel].map(([id,title])=>({id,title})),interval:iv});st.mode='done';show()}catch(x){e.target.disabled=false}}}
-function vDone(){V.innerHTML=`<div class="card done"><span class="em">🎉</span><h2 style="font-size:20px">Vazifa ishga tushdi!</h2><p class="mut" style="margin:6px 0 14px">Birinchi yuborish bir necha soniyada boshlanadi. Natijani «Vazifalar» va «Statistika» bo'limlarida ko'rasiz.</p>
+  try{const body={ad_id:st.ad,chats:[...st.sel].map(([id,title])=>({id,title})),interval:iv};
+   if(st.edit){await api('jobs/'+st.edit,'PUT',body);const id=st.edit;resetWizard();st.jobId=id;tab='jobs';nav();toast('Saqlandi ✅');show()}
+   else{await api('jobs','POST',body);st.mode='done';show()}}catch(x){e.target.disabled=false}}}
+function resetWizard(){st.edit=null;st.mode='';st.step=1;st.ad=null;st.sel.clear()}
+document.addEventListener('click',e=>{if(e.target.id==='cx'){const id=st.edit;resetWizard();st.jobId=id;tab='jobs';nav();show()}});
+function vDone(){V.innerHTML=`<div class="card done"><span class="em">🎉</span><h2 style="font-size:20px">Vazifa ishga tushdi!</h2><p class="mut" style="margin:6px 0 14px">Birinchi yuborish bir necha soniyada boshlanadi. Har bir e'lonning statistikasi va tahriri «Vazifalar» bo'limida.</p>
  <button id="more" style="width:100%;margin-bottom:8px">➕ Yana e'lon qo'shish</button><button class="g" id="jb" style="width:100%">📋 Vazifalarni ko'rish</button></div>`;
- $('#more').onclick=()=>{st.mode='';st.step=1;st.ad=null;st.sel.clear();show()};$('#jb').onclick=()=>{st.mode='';st.step=1;st.ad=null;st.sel.clear();tab='jobs';nav();show()}}
-async function vJobs(g){const j=await api('jobs');if(g!==gen)return;
- V.innerHTML=j.map(x=>`<div class="card"><div class="row"><b>${KI[x.kind]||'📝'} ${esc(x.title)}</b><span class="mut">${x.chats.length} guruh · ${fmt(x.interval)}</span></div>
- <div class="mut">${x.active?'Keyingi yuborish: '+new Date(Math.max(x.next_run,Date.now()/1000)*1000).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}):'⏸ To\'xtatilgan'}</div>
- ${x.err?`<div class="err">Xato: ${esc(x.err)}</div>`:''}
- <div class="row" style="margin-top:10px"><button class="s" data-n="${x.id}">Hozir yuborish</button><button class="s g" data-p="${x.id}">${x.active?'⏸ To\'xtatish':'▶️ Yoqish'}</button><button class="s d" data-x="${x.id}">🗑</button></div></div>`).join('')||'<div class="card mut">Hali vazifa yo\'q. «Yuborish» bo\'limidan boshlang.</div>';
+ $('#more').onclick=()=>{resetWizard();show()};$('#jb').onclick=()=>{resetWizard();st.jobId=null;tab='jobs';nav();show()}}
+const tm=ts=>ts?new Date(ts*1000).toLocaleString([],{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'—';
+const nextT=x=>new Date(Math.max(x.next_run,Date.now()/1000)*1000).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+async function vJobs(g){if(st.jobId)return vJob(g);const j=await api('jobs');if(g!==gen)return;
+ V.innerHTML=j.map(x=>`<div class="card" data-o="${x.id}" style="cursor:pointer"><div class="row"><b class="pp" style="flex:1">${KI[x.kind]||'📝'} ${esc(x.preview||x.title)}</b><span class="mut" style="white-space:nowrap">${x.chats.length} guruh · ${fmt(x.interval)}</span></div>
+ <div class="mut" style="margin-top:4px">${x.active?'🟢 Keyingi: '+nextT(x):'⏸ To\'xtatilgan'} · 📤 ${x.sent_n} marta${x.last?' · oxirgi '+tm(x.last):''}</div>
+ ${x.err?`<div class="err">⚠️ ${esc(x.err)}</div>`:''}
+ <div class="acts" style="margin-top:10px"><button class="s" data-n="${x.id}">Hozir yuborish</button><button class="s g" data-p="${x.id}">${x.active?'⏸ To\'xtatish':'▶️ Yoqish'}</button><button class="s g" data-o2="${x.id}">Batafsil ›</button></div></div>`).join('')||'<div class="card empty"><i>📭</i>Hali vazifa yo\'q. «➕ Yangi» bo\'limidan boshlang.</div>';
+ V.querySelectorAll('[data-o]').forEach(c=>c.onclick=e=>{if(e.target.closest('[data-n],[data-p]'))return;st.jobId=+c.dataset.o;show()});
  const act=(k,f)=>V.querySelectorAll(`[data-${k}]`).forEach(b=>b.onclick=async()=>{await f(b.dataset[k]);toast('Bajarildi');show()});
- act('n',i=>api(`jobs/${i}/now`,'POST'));act('p',i=>api(`jobs/${i}/toggle`,'POST'));act('x',i=>api('jobs/'+i,'DELETE'))}
+ act('n',i=>api(`jobs/${i}/now`,'POST'));act('p',i=>api(`jobs/${i}/toggle`,'POST'))}
+async function vJob(g){let d;try{d=await api('jobs/'+st.jobId)}catch(e){st.jobId=null;if(e.message!=='login')show();return}if(g!==gen)return;
+ const j=d.job,mx=Math.max(1,...d.groups.map(x=>x.n));
+ V.innerHTML=`<button class="g s" id="bk">← Vazifalar</button>
+ <div class="card" style="margin-top:10px"><div class="post" style="cursor:default"><div class="pi">${KI[j.kind]||'📝'}</div><div class="pt"><div class="pp">${esc(j.preview)}</div><div class="mut">${j.chats.length} guruh · har ${fmt(j.interval)}</div></div></div>
+ <div class="mut">${j.active?'🟢 Faol · keyingi yuborish: '+nextT(j):'⏸ To\'xtatilgan'}</div>${d.err?`<div class="err">⚠️ ${esc(d.err)}</div>`:''}
+ <div class="acts" style="margin-top:10px"><button class="s" id="nw">Hozir yuborish</button><button class="s g" id="tgl">${j.active?'⏸ To\'xtatish':'▶️ Yoqish'}</button></div>
+ <div class="acts" style="margin-top:8px"><button class="s g" id="ed">✏️ Tahrirlash</button><button class="s d" id="rm">🗑 O'chirish</button></div></div>
+ <div class="card row"><div class="stat"><div class="big">${d.total}</div><div class="mut">yuborildi</div></div><div class="stat"><div class="big">${d.replies}</div><div class="mut">reply</div></div><div class="stat"><div class="big">${d.people}</div><div class="mut">odam</div></div></div>
+ <div class="mut" style="margin:0 4px 8px">Oxirgi yuborish: ${tm(d.last)}</div>
+ <h2 style="margin:6px 2px 8px">Guruhlar bo'yicha</h2>${d.groups.map(x=>`<div class="card"><div class="row"><b>${esc(x.title)}</b><span class="mut">${x.n} marta</span></div><div class="mut">${x.rep} reply · ${x.ppl} kishi · oxirgi: ${tm(x.last)}</div>${x.err?`<div class="err">⚠️ ${esc(x.err)}</div>`:''}<div class="bar" style="width:${x.n/mx*100}%"></div></div>`).join('')}`;
+ $('#bk').onclick=()=>{st.jobId=null;show()};
+ $('#nw').onclick=async()=>{await api(`jobs/${j.id}/now`,'POST');toast('Yuborish boshlanadi');show()};
+ $('#tgl').onclick=async()=>{await api(`jobs/${j.id}/toggle`,'POST');show()};
+ $('#ed').onclick=()=>{st.edit=j.id;st.ad=j.ad_id;st.sel=new Map(j.chats.map(c=>[c.id,c.title]));st.iv=j.interval;st.step=1;st.mode='';tab='new';nav();show()};
+ $('#rm').onclick=()=>tg.showConfirm('Vazifani o\'chiraymi? (Post saqlanib qoladi)',async ok=>{if(!ok)return;await api('jobs/'+j.id,'DELETE');st.jobId=null;toast('O\'chirildi');show()})}
 async function vStat(g){const s=await api('stats');if(g!==gen)return;const mx=Math.max(1,...s.chats.map(c=>c.n));
  V.innerHTML=`<div class="card row"><div class="stat"><div class="big">${s.total}</div><div class="mut">yuborildi</div></div><div class="stat"><div class="big">${s.replies}</div><div class="mut">reply</div></div><div class="stat"><div class="big">${s.people}</div><div class="mut">odam</div></div></div>
  <h2 style="margin:6px 2px 8px">Guruhlar bo'yicha</h2>${s.chats.map(c=>`<div class="card"><div class="row"><b>${esc(c.title)}</b><span class="mut">${c.n} marta</span></div><div class="mut">${c.rep} reply · ${c.ppl} kishi</div><div class="bar" style="width:${c.n/mx*100}%"></div></div>`).join('')||'<div class="card mut">Hozircha statistika yo\'q</div>'}`}

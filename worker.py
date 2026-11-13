@@ -26,25 +26,33 @@ async def send(c, chat, m):
     except ValueError:
         await c.get_dialogs(); return await c.send_message(chat["id"], m)
 
+FRIENDLY = {"MessageEmptyError": "Post bo'sh yoki qo'llab-quvvatlanmaydigan turda. Postni o'chirib, qaytadan qo'shing.",
+    "ChatWriteForbiddenError": "Bu guruhga yozish taqiqlangan.", "UserBannedInChannelError": "Siz bu guruhda cheklangansiz (ban).",
+    "ChatAdminRequiredError": "Bu guruhga faqat adminlar yoza oladi.", "ChannelPrivateError": "Guruhga kirish yo'q (chiqib ketgansiz yoki guruh yopilgan).",
+    "PeerIdInvalidError": "Guruh topilmadi.", "SlowModeWaitError": "Guruhda sekin rejim yoqilgan, keyingi safar urinadi.",
+    "ChatRestrictedError": "Guruh sizga yozishni cheklagan."}
+def friendly(e): return FRIENDLY.get(type(e).__name__, f"{type(e).__name__}: {e}")
+
 async def run_job(j):
-    u = j["user_id"]; api.ERR.pop(j["id"], None)
+    u = j["user_id"]; E = api.ERR[j["id"]] = {}
     c, me = await T.me_of(u)
-    if me is None: api.ERR[j["id"]] = "Akkaunt ulanmagan. Ilovaga kirib, qaytadan ulang."; return
+    if me is None: E["_"] = "Akkaunt ulanmagan. Ilovaga kirib, qaytadan ulang."; return
     ad = q("select * from ads where id=?", (j["ad_id"],))
     m = await c.get_messages(ad[0]["peer"] or "me", ids=ad[0]["msg_id"]) if ad else None
-    if not m: api.ERR[j["id"]] = "Post topilmadi (bot bilan chatdan o'chirib yuborilgan bo'lishi mumkin). Postni qaytadan qo'shing."; return
+    if not m: E["_"] = "Post topilmadi (bot bilan chatdan o'chirib yuborilgan bo'lishi mumkin). Postni qaytadan qo'shing."; return
+    if not (m.message or m.media): E["_"] = FRIENDLY["MessageEmptyError"]; return
     for chat in json.loads(j["chats"]):
         try:
             s = await send(c, chat, m)
-            q("insert into sent(user_id,ad_id,chat_id,chat_title,msg_id,ts) values(?,?,?,?,?,?)", (u, j["ad_id"], chat["id"], chat["title"], s.id, time.time()))
+            q("insert into sent(user_id,ad_id,job_id,chat_id,chat_title,msg_id,ts) values(?,?,?,?,?,?,?)", (u, j["ad_id"], j["id"], chat["id"], chat["title"], s.id, time.time()))
         except errors.FloodWaitError as e: await asyncio.sleep(min(e.seconds, 600) + 1)
-        except T.DEAD: await T.dead(u); api.ERR[j["id"]] = "Akkaunt Telegram tomonidan uzilgan."; return
-        except Exception as e: api.ERR[j["id"]] = f'{chat["title"]}: {type(e).__name__}: {e}'
+        except T.DEAD: await T.dead(u); E["_"] = "Akkaunt Telegram tomonidan uzilgan."; return
+        except Exception as e: E[chat["title"]] = friendly(e)
         await asyncio.sleep(random.uniform(5, 12))  # ban bo'lmasligi uchun pauza
 
 async def run_safe(j):
     try: await run_job(j)
-    except Exception as e: api.ERR[j["id"]] = f"{type(e).__name__}: {e}"; T.log("vazifa xato:", e)
+    except Exception as e: api.ERR[j["id"]] = {"_": friendly(e)}; T.log("vazifa xato:", e)
     finally: RUN.discard(j["id"])
 
 async def scheduler():
@@ -82,7 +90,7 @@ def reply(chat_id, text):  # bot javobi + Mini App tugmasi
     if config.WEBAPP_URL: d["reply_markup"] = open_btn()
     tgapi("sendMessage", d)
 
-async def capture(uid, text, date, grouped):
+async def capture(uid, text, date, grouped, kind=None):
     """Foydalanuvchi botga yuborgan postni uning O'Z akkauntidagi bot bilan chatdan topib, saqlaydi."""
     if not T.has_saved(uid): return "noauth"
     if time.time() - T.WAIT.get(uid, 0) > 900: return "nowait"
@@ -93,7 +101,8 @@ async def capture(uid, text, date, grouped):
     found = None
     for _ in range(4):
         cand = [m for m in await c.get_messages(config.BOT_USERNAME, limit=8)
-                if m.out and (m.message or "") == (text or "") and abs((m.date - date).total_seconds()) < 120]
+                if m.out and (m.message or m.media) and (m.message or "") == (text or "") and (kind is None or kind_of(m) == kind)
+                and abs((m.date - date).total_seconds()) < 120]
         if cand: found = min(cand, key=lambda m: abs((m.date - date).total_seconds())); break
         await asyncio.sleep(1.5)
     if not found: return "notfound"
@@ -116,7 +125,7 @@ REPLY = {"ok": "✅ Post qabul qilindi! Ilovaga qaytib, guruhlar va vaqtni tanla
 @bot.on(events.NewMessage(incoming=True))
 async def on_private(e):  # botga yuborilgan oddiy xabar = yangi post
     if not e.is_private or (e.raw_text or "").startswith("/"): return
-    try: res = await capture(e.sender_id, e.message.message, e.message.date, e.message.grouped_id)
+    try: res = await capture(e.sender_id, e.message.message, e.message.date, e.message.grouped_id, kind_of(e.message))
     except Exception as ex: T.log("capture xato:", type(ex).__name__, ex); res = "error"
     if res == "album": return
     try: await asyncio.to_thread(reply, e.sender_id, REPLY[res])

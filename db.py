@@ -12,5 +12,7 @@ create table if not exists replies(id integer primary key, user_id int, chat_id 
 for _c in ("peer text default 'me'", "kind text default 'matn'", "preview text default ''", "created real default 0"):
     try: D.execute(f"alter table ads add column {_c}")   # eski bazani yangilash
     except sqlite3.OperationalError: pass
+try: D.execute("alter table sent add column job_id int default 0")
+except sqlite3.OperationalError: pass
 def q(sql, a=()):
     c = D.execute(sql, a); D.commit(); return [dict(r) for r in c.fetchall()]
