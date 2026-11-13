@@ -5,7 +5,7 @@ from telethon.sessions import StringSession
 import config, tgclients as T, api
 from db import q
 
-RUN = set(); BOT_OK = False; BOT_ERR = ""
+RUN = set(); api.SCHED["run"] = RUN; BOT_OK = False; BOT_ERR = ""
 
 def tgapi(method, data):  # Telegram Bot API
     req = urllib.request.Request(f"https://api.telegram.org/bot{config.BOT_TOKEN}/{method}", json.dumps(data).encode(), {"Content-Type": "application/json"})
@@ -47,25 +47,28 @@ async def run_job(j):
         L["state"] = "run"
         fu = api.FLOOD.get(u, 0)
         if fu > time.time():  # Telegram cheklovi davom etmoqda: urinmaymiz
+            T.ev(u, f"⏳ Telegram cheklovi davom etmoqda, {hm(fu)} gacha kutiladi")
             L.update(state="flood", until=fu); q("update jobs set next_run=max(next_run, ?) where id=?", (fu + 30, jid)); return
         c, me = await T.me_of(u)
-        if me is None: L["state"] = "idle"; E["_"] = "Akkaunt ulanmagan. Ilovaga kirib, qaytadan ulang."; return
+        if me is None: L["state"] = "idle"; E["_"] = "Akkaunt ulanmagan. Ilovaga kirib, qaytadan ulang."; T.ev(u, "❌ " + E["_"]); return
         ad = q("select * from ads where id=?", (j["ad_id"],))
         m = await c.get_messages(ad[0]["peer"] or "me", ids=ad[0]["msg_id"]) if ad else None
-        if not m: L["state"] = "idle"; E["_"] = "Post topilmadi (bot bilan chatdan o'chirib yuborilgan bo'lishi mumkin). Postni qaytadan qo'shing."; return
+        if not m: L["state"] = "idle"; E["_"] = "Post topilmadi (bot bilan chatdan o'chirib yuborilgan bo'lishi mumkin). Postni qaytadan qo'shing."; T.ev(u, "❌ " + E["_"]); return
         if not (m.message or m.media): L["state"] = "idle"; E["_"] = FRIENDLY["MessageEmptyError"]; return
-        chats = json.loads(j["chats"])
+        chats = json.loads(j["chats"]); ok = bad = 0
+        T.ev(u, f"▶️ «{(ad[0]['preview'] or 'Post')[:30]}» yuborish boshlandi ({len(chats)} guruh)")
         for k, chat in enumerate(chats, 1):
             L["prog"] = f"{k}/{len(chats)}"
             try:
                 s = await send(c, u, chat, m)
-                q("insert into sent(user_id,ad_id,job_id,chat_id,chat_title,msg_id,ts) values(?,?,?,?,?,?,?)", (u, j["ad_id"], jid, chat["id"], chat["title"], s.id, time.time()))
-            except asyncio.TimeoutError: E[chat["title"]] = "Telegram javob bermadi (vaqt tugadi)."
+                q("insert into sent(user_id,ad_id,job_id,chat_id,chat_title,msg_id,ts) values(?,?,?,?,?,?,?)", (u, j["ad_id"], jid, chat["id"], chat["title"], s.id, time.time())); ok += 1
+            except asyncio.TimeoutError: E[chat["title"]] = "Telegram javob bermadi (vaqt tugadi)."; bad += 1; T.ev(u, f"❌ {chat['title']}: {E[chat['title']]}")
             except errors.FloodWaitError as e:
                 if e.seconds > 90:  # uzoq cheklov: butun aylanishni to'xtatamiz va vaqti kelganda davom etamiz
                     until = time.time() + e.seconds; api.FLOOD[u] = until
                     q("update jobs set next_run=max(next_run, ?) where user_id=?", (until + 30, u))
                     L.update(state="flood", until=until)
+                    T.ev(u, f"⏳ Telegram {e.seconds} soniya kutishni talab qildi (cheklov). {hm(until)} da davom etadi")
                     E["_"] = f"Telegram akkauntingizga vaqtinchalik cheklov qo'ydi (juda ko'p xabar). {hm(until)} dan keyin o'zi davom etadi."; return
                 await asyncio.sleep(e.seconds + 1)
             except T.DEAD: await T.dead(u); L["state"] = "idle"; E["_"] = "Akkaunt Telegram tomonidan uzilgan."; return
@@ -73,9 +76,9 @@ async def run_job(j):
                 if type(e).__name__ in ("PeerFloodError", "UserDeactivatedBanError", "UserDeactivatedError", "PhoneNumberBannedError"):
                     q("update jobs set active=0 where user_id=?", (u,))   # Telegram cheklov qo'ydi: hamma vazifa to'xtaydi
                     L["state"] = "idle"; E["_"] = "Telegram akkauntingizga cheklov qo'ydi (spam deb topildi). Barcha vazifalar to'xtatildi. @SpamBot ga yozib holatni tekshiring."; return
-                E[chat["title"]] = friendly(e)
+                E[chat["title"]] = friendly(e); bad += 1; T.ev(u, f"❌ {chat['title']}: {E[chat['title']]}")
             await asyncio.sleep(random.uniform(5, 12))  # ban bo'lmasligi uchun pauza
-        L.update(state="idle", prog="", t=time.time())
+        L.update(state="idle", prog="", t=time.time()); T.ev(u, f"✅ Tugadi: {ok} ta yuborildi, {bad} ta xato")
 
 async def run_safe(j):
     try: await asyncio.wait_for(run_job(j), 7200)
@@ -87,7 +90,7 @@ async def run_safe(j):
 
 async def scheduler():
     while True:
-        await asyncio.sleep(15)
+        await asyncio.sleep(15); api.SCHED["t"] = time.time()
         try:
             for j in q("select * from jobs where active=1 and next_run<=?", (time.time(),)):
                 if j["id"] in RUN: continue

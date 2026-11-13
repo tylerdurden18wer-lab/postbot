@@ -1,5 +1,5 @@
 """Mini App uchun HTTP API."""
-import json, time, hmac, hashlib
+import json, time, hmac, hashlib, asyncio
 from urllib.parse import parse_qsl
 from fastapi import APIRouter, Header, HTTPException, Depends
 from telethon import errors
@@ -7,6 +7,7 @@ import config, tgclients as T
 from db import q, D, drop_job
 
 r = router = APIRouter(prefix="/api")
+SCHED = {"t": 0, "run": set()}   # rejalashtirgich yurak urishi
 LIVE, FLOOD = {}, {}   # vazifalarning jonli holati; Telegram cheklovi tugash vaqti (foydalanuvchi bo'yicha)
 ERR = {}  # vazifa xatolari: {job_id: {"_": umumiy, "guruh nomi": xato}} (worker yozadi)
 def first_err(jid): return next(iter((ERR.get(jid) or {}).values()), None)
@@ -201,6 +202,18 @@ def stats(u: int = Depends(auth)):
             from sent s where s.user_id=? group by s.chat_id order by n desc""", (u,)),
     }
 
+@r.get("/log")
+def get_log(u: int = Depends(auth)): return [{"t": t, "m": m} for t, m in reversed(T.EV.get(u, []))]
+
+@r.post("/test_send")
+async def test_send(u: int = Depends(auth)):  # yuborish umuman ishlayaptimi: "Saqlangan xabarlar"ga sinov xabari
+    c = await need(u); t = time.time()
+    try: await asyncio.wait_for(c.send_message("me", "✅ PostBot sinov xabari: yuborish ishlayapti"), 30)
+    except asyncio.TimeoutError: raise HTTPException(400, "Telegram 30 soniya ichida javob bermadi.")
+    except errors.FloodWaitError as e: raise HTTPException(400, f"Telegram {e.seconds} soniya kutishni talab qilmoqda (cheklov).")
+    except Exception as e: raise HTTPException(400, f"{type(e).__name__}: {e}")
+    T.ev(u, "📨 Sinov xabari muvaffaqiyatli yuborildi"); return {"ok": 1, "ms": int((time.time() - t) * 1000)}
+
 @r.get("/diag")
 async def diag(u: int = Depends(auth)):  # qadamma-qadam tekshiruv: muammo aynan qayerdaligini ko'rsatadi
     out = [{"n": "Mini App imzosi (initData)", "ok": True, "d": f"user_id={u}", "ms": 0}]; box = {}
@@ -219,5 +232,10 @@ async def diag(u: int = Depends(auth)):  # qadamma-qadam tekshiruv: muammo aynan
         ds = await box["c"].get_dialogs(limit=40); return f"{len(ds)} chat, shundan {sum(1 for d in ds if d.is_group)} ta guruh"
     if await step("Telegram serveriga ulanish", s1) and await step("Akkaunt (get_me)", s2):
         await step("Saqlangan xabarlarni o'qish", s3); await step("Chatlar ro'yxati", s4)
+    age = int(time.time() - SCHED["t"]); mine = q("select id, active, next_run from jobs where user_id=?", (u,))
+    run = sum(1 for j in mine if j["id"] in SCHED["run"]); act = [j["next_run"] for j in mine if j["active"]]
+    out.append({"n": "Rejalashtirgich", "ok": age < 60, "ms": 0, "d": f"oxirgi tekshiruv {age} soniya oldin · faol vazifa: {len(act)} · hozir bajarilmoqda: {run}" + (f" · keyingisi {'hozir' if min(act) <= time.time() else time.strftime('%H:%M', time.localtime(min(act)))}" if act else "")})
+    fl = FLOOD.get(u, 0)
+    out.append({"n": "Telegram cheklovi", "ok": fl < time.time(), "ms": 0, "d": "yo'q" if fl < time.time() else f"{time.strftime('%H:%M', time.localtime(fl))} gacha kutiladi"})
     out.append({"n": "Bazada saqlangan sessiya", "ok": T.has_saved(u), "d": "bor" if T.has_saved(u) else "yo'q", "ms": 0})
     return out

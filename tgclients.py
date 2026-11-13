@@ -1,5 +1,6 @@
 """Har bir foydalanuvchi uchun alohida Telegram akkaunt (Telethon) va uning holatini boshqarish."""
 import asyncio, time
+from collections import deque
 from telethon import TelegramClient, events, errors
 from telethon.sessions import StringSession
 import config
@@ -11,6 +12,10 @@ DEAD = (errors.AuthKeyUnregisteredError, errors.SessionRevokedError, errors.Sess
         errors.AuthKeyDuplicatedError, errors.UnauthorizedError)
 
 def log(*a): print(time.strftime("%H:%M:%S"), *a, flush=True)
+
+EV = {}   # foydalanuvchi jurnali: nima bo'layotgani (Mini App'da ko'rinadi)
+def ev(uid, text):
+    EV.setdefault(uid, deque(maxlen=120)).append((time.time(), text)); log(f"[{uid}]", text)
 
 def new_client(uid, sess=""):
     c = TelegramClient(StringSession(sess), config.API_ID, config.API_HASH)
@@ -65,7 +70,10 @@ async def load_groups(u, g):  # guruhlar fonda yuklanadi, kelgani sari ro'yxatga
     try:
         c = await get_client(u)
         async for d in c.iter_dialogs(ignore_migrated=True):
-            if d.is_group: g["d"].append({"id": d.id, "title": d.title or "Guruh", "n": getattr(d.entity, "participants_count", None)})
+            e = d.entity
+            if d.is_group: g["d"].append({"id": d.id, "title": d.title or "Guruh", "n": getattr(e, "participants_count", None), "ch": False})
+            elif d.is_channel and (getattr(e, "creator", False) or getattr(getattr(e, "admin_rights", None), "post_messages", False)):
+                g["d"].append({"id": d.id, "title": d.title or "Kanal", "n": getattr(e, "participants_count", None), "ch": True})   # o'zingiz admin bo'lgan kanallar
         WARM.add(u)
     except DEAD: g["err"] = "login"; await dead(u)
     except Exception as e: g["err"] = f"{type(e).__name__}: {e}"; log("guruhlar xato:", g["err"])

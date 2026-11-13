@@ -60,7 +60,7 @@ nav button{flex:1;background:none;color:var(--mut);padding:6px 2px;font-size:11p
 .sh{width:100%;background:var(--card);border-radius:22px 22px 0 0;padding:18px 16px calc(18px + env(safe-area-inset-bottom));transform:translateY(100%);transition:transform .28s}.ov.on .sh{transform:none}
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style></head><body>
-<header><div class="logo">📣 PostBot <small id="ver"></small></div><div id="me" class="me"></div></header>
+<header><div class="logo">📣 PostBot <small id="ver"></small></div><div class="me"><button id="lg" class="g s" hidden>📜 Jurnal</button><span id="me" class="me"></span></div></header>
 <div id="v"></div><button id="fab" hidden>＋ Yangi e'lon</button><nav id="nav" hidden></nav>
 <script>
 const tg=Telegram.WebApp;tg.ready();tg.expand();try{tg.setHeaderColor('secondary_bg_color');tg.setBackgroundColor('secondary_bg_color')}catch(e){}
@@ -88,12 +88,12 @@ async function api(p,m='GET',b){const c=new AbortController();const to=setTimeou
  if(r.status==401){gen++;login();throw new Error('login')}
  if(!r.ok){const e=j.detail||('Xato '+r.status);toast(e);throw new Error(e)}return j}
 const TABS=[['home','🏠','Bosh sahifa'],['stat','📊','Statistika'],['acc','👤','Akkaunt']];
-function nav(){const n=$('#nav');n.hidden=false;n.innerHTML=TABS.map(([k,i,t])=>`<button class="${k==tab?'on':''}" data-k="${k}"><span>${i}</span>${t}</button>`).join('');
+function nav(){const n=$('#nav');n.hidden=false;$('#lg').hidden=false;n.innerHTML=TABS.map(([k,i,t])=>`<button class="${k==tab?'on':''}" data-k="${k}"><span>${i}</span>${t}</button>`).join('');
  n.querySelectorAll('button').forEach(b=>b.onclick=()=>{tab=b.dataset.k;st.jobId=null;st.addTo=false;nav();show()})}
 function setMe(n){$('#me').innerHTML=n?`${esc(n)}<div class="av">${esc(n[0].toUpperCase())}</div>`:''}
 async function boot(){gen++;try{const s=await api('state');st.min=s.min||5;if(s.auth){st.authed=true;setMe(s.me);nav();show()}else login()}catch(e){if(e.message!=='login')V.innerHTML=`<div class="c"><b>Xato</b><div class="err">${esc(e.message)}</div></div>`}}
 /* ---------- kirish ---------- */
-function login(step=1){st.authed=false;$('#nav').hidden=true;$('#fab').hidden=true;setMe('');
+function login(step=1){st.authed=false;$('#lg').hidden=true;$('#nav').hidden=true;$('#fab').hidden=true;setMe('');
  const bar=n=>`<div class="steps"><i class="on"></i><i class="${n>1?'on':''}"></i><i class="${n>2?'on':''}"></i></div>`;
  if(step==1){V.innerHTML=`<div class="c"><div class="hero2"><span class="em">📱</span><h2 style="font-size:20px">Telegram akkauntni ulang</h2><p class="mut">Telefon raqamingizni kiriting, Telegram'ga kod keladi.</p></div>${bar(1)}
  <input id="ph" value="+998" inputmode="tel" autocomplete="tel"><button id="go" style="width:100%">Kod yuborish</button>
@@ -110,7 +110,7 @@ async function doLogin(pw){const b=$('#ok');b.disabled=true;
   if(r.need_password){login(3);return}toast('Ulandi ✅');tab='home';boot()}catch(x){if(x.message!=='login')b.disabled=false}}
 async function show(silent){const g=++gen;$('#fab').hidden=!(tab==='home'&&!st.jobId&&st.authed);
  if(!silent)V.innerHTML='<div class="c"><div class="sk"></div><div class="sk"></div><div class="sk"></div></div>';
- try{await ({home:vHome,stat:vStat,acc:vAcc,new:vNew})[tab](g);cus()}catch(e){if(e.message!=='login'&&g===gen)V.innerHTML=`<div class="c"><b>Xato</b><div class="err">${esc(e.message)}</div></div>`}}
+ try{await ({home:vHome,stat:vStat,acc:vAcc,new:vNew,log:vLog})[tab](g);cus()}catch(e){if(e.message!=='login'&&g===gen)V.innerHTML=`<div class="c"><b>Xato</b><div class="err">${esc(e.message)}</div></div>`}}
 /* ---------- bosh sahifa ---------- */
 function live(x){const l=x.live||{};
  if(!x.active)return['off','⏸ To\'xtatilgan'];
@@ -162,14 +162,14 @@ async function vAddGroup(g){const d=await api('jobs/'+st.jobId);if(g!==gen)retur
  <input id="q" placeholder="🔍 Guruhni qidirish" style="margin-top:8px"><div id="gl"><div class="sk"></div><div class="sk"></div></div></div>`;
  $('#bk').onclick=()=>{st.addTo=false;show()};let gl=[];
  const draw=()=>{const v=$('#q').value.toLowerCase();const s=gl.filter(x=>!have.has(x.id)&&x.title.toLowerCase().includes(v));
-  $('#gl').innerHTML=s.map(x=>`<div class="gr" data-g="${x.id}"><div class="av" style="background:hsl(${Math.abs(x.id)%360},60%,45%)">${esc((x.title[0]||'?').toUpperCase())}</div><div class="gt"><b>${esc(x.title)}</b>${x.n?`<span>${x.n} a'zo</span>`:''}</div><div class="ck" style="color:var(--ac);border-color:var(--ac)">+</div></div>`).join('')||'<p class="mut" style="padding:8px">Qo\'shiladigan guruh qolmadi</p>'};
+  $('#gl').innerHTML=s.map(x=>`<div class="gr" data-g="${x.id}"><div class="av" style="background:hsl(${Math.abs(x.id)%360},60%,45%)">${esc((x.title[0]||'?').toUpperCase())}</div><div class="gt"><b>${esc(x.title)}</b>${x.n||x.ch?`<span>${x.ch?'📢 kanal':''}${x.ch&&x.n?' · ':''}${x.n?x.n+' a\'zo':''}</span>`:''}</div><div class="ck" style="color:var(--ac);border-color:var(--ac)">+</div></div>`).join('')||'<p class="mut" style="padding:8px">Qo\'shiladigan guruh qolmadi</p>'};
  $('#gl').onclick=async e=>{const r=e.target.closest('.gr');if(!r)return;const i=+r.dataset.g,x=gl.find(y=>y.id===i);try{await api(`jobs/${st.jobId}/chats`,'POST',{add:[{id:i,title:x.title}]});have.add(i);toast('Qo\'shildi ✅');draw()}catch(e){}};
  $('#q').oninput=draw;
  const poll=async()=>{if(g!==gen||!$('#gl'))return;try{const r=await api('groups');if(g!==gen||!$('#gl'))return;gl=r.d;draw();$('#gs').textContent=r.err?'Xato: '+r.err:r.done?'Qo\'shmoqchi bo\'lgan guruhni bosing':'Yuklanmoqda… '+gl.length+' ta topildi';if(!r.done)setTimeout(poll,1200)}catch(e){}};poll()}
 /* ---------- yangi e'lon ---------- */
 function resetWizard(){st.edit=null;st.mode='';st.step=1;st.ad=null;st.sel.clear()}
 function startNew(){resetWizard();tab='new';nav();show()}
-$('#fab').onclick=startNew;
+$('#fab').onclick=startNew;$('#lg').onclick=()=>{tab='log';st.jobId=null;nav();show()};
 document.addEventListener('click',e=>{if(e.target.id==='cx'){const id=st.edit;resetWizard();st.jobId=id;tab='home';nav();show()}});
 const pills=n=>(st.edit?'<div class="mut" style="margin-bottom:8px">✏️ Tahrirlash rejimi · <a id="cx" style="color:var(--ac);text-decoration:underline;cursor:pointer">bekor qilish</a></div>':'')+`<div class="pills">${['Post','Guruhlar','Vaqt'].map((t,i)=>`<div class="pill ${i+1==n?'on':i+1<n?'ok':''}"><b>${i+1<n?'✓':i+1}</b>${t}</div>`).join('')}</div>`;
 async function vNew(g){if(st.mode=='done')return vDone();if(st.mode=='newpost')return vNewPost(g);if(st.step==2)return vStep2(g);if(st.step==3)return vStep3(g);return vStep1(g)}
@@ -201,7 +201,7 @@ async function vStep2(g){
  let gl=[],shown=[];
  const draw=()=>{const v=$('#q').value.toLowerCase();shown=gl.filter(x=>x.title.toLowerCase().includes(v));
   $('#gl').innerHTML=shown.map(x=>`<div class="gr ${st.sel.has(x.id)?'on':''}" data-g="${x.id}"><div class="av" style="background:hsl(${Math.abs(x.id)%360},60%,45%)">${esc((x.title[0]||'?').toUpperCase())}</div>
-  <div class="gt"><b>${esc(x.title)}</b>${x.n?`<span>${x.n} a'zo</span>`:''}</div><div class="ck">✓</div></div>`).join('')||(gl.length?'<p class="mut" style="padding:8px">Hech narsa topilmadi</p>':'');cnt()};
+  <div class="gt"><b>${esc(x.title)}</b>${x.n||x.ch?`<span>${x.ch?'📢 kanal':''}${x.ch&&x.n?' · ':''}${x.n?x.n+' a\'zo':''}</span>`:''}</div><div class="ck">✓</div></div>`).join('')||(gl.length?'<p class="mut" style="padding:8px">Hech narsa topilmadi</p>':'');cnt()};
  $('#gl').onclick=e=>{const r=e.target.closest('.gr');if(!r)return;const i=+r.dataset.g,x=gl.find(y=>y.id===i);st.sel.has(i)?st.sel.delete(i):st.sel.set(i,x.title);r.classList.toggle('on',st.sel.has(i));cnt()};
  const poll=async f=>{if(g!==gen||!$('#gl'))return;
   try{const r=await api('groups'+(f?'?refresh=1':''));if(g!==gen||!$('#gl'))return;gl=r.d;draw();
@@ -236,8 +236,13 @@ async function vStat(g){const s=await api('stats');if(g!==gen)return;const mx=Ma
 async function vAcc(g){const s=await api('state');if(g!==gen)return;
  V.innerHTML=`<div class="c"><h2>Ulangan akkaunt</h2><div class="row" style="justify-content:flex-start"><div class="av" style="width:46px;height:46px;font-size:18px">${esc((s.me||'?')[0].toUpperCase())}</div><div><b>${esc(s.me)}</b><div class="mut">${s.phone?'+'+esc(s.phone):''}</div></div></div></div>
  <div class="c"><h2>Boshqa raqam ulash</h2><p class="mut" style="margin-bottom:10px">Akkaunt serverdan uziladi, barcha e'lonlar va statistika o'chiriladi. Keyin boshqa raqam bilan kirishingiz mumkin.</p><button class="d" id="lo" style="width:100%">Akkauntni uzish</button></div>
- <button class="g" id="dg" style="width:100%;margin-bottom:10px">🩺 Tekshiruv (muammo bo'lsa bosing)</button><p class="mut">Telegram → Sozlamalar → Qurilmalar orqali ham istalgan payt uzishingiz mumkin.</p>`;$('#dg').onclick=showDiag;
+ <div class="acts" style="margin-bottom:10px"><button class="g" id="ts">📨 Sinov yuborish</button><button class="g" id="jl">📜 Jurnal</button></div><button class="g" id="dg" style="width:100%;margin-bottom:10px">🩺 Tekshiruv (muammo bo'lsa bosing)</button><p class="mut">Telegram → Sozlamalar → Qurilmalar orqali ham istalgan payt uzishingiz mumkin.</p>`;$('#dg').onclick=showDiag;$('#jl').onclick=()=>{tab='log';nav();show()};
+ $('#ts').onclick=async e=>{e.target.disabled=true;try{const r=await api('test_send','POST');toast('✅ Sinov xabari yuborildi ('+r.ms+' ms). «Saqlangan xabarlar»ni tekshiring.')}catch(x){}e.target.disabled=false};
  $('#lo').onclick=async()=>{if(!await ask('Akkauntni uzib, barcha e\'lonlarni o\'chiraymi?','Uzish',true))return;await api('logout','POST');resetWizard();st.jobId=null;tab='home';toast('Akkaunt uzildi');login()}}
+async function vLog(g){const l=await api('log');if(g!==gen)return;
+ V.innerHTML=`<button class="g s" id="bk">← Orqaga</button><div class="c" style="margin-top:10px"><h2>📜 Jurnal</h2><p class="mut" style="margin-bottom:8px">Bot nima qilayotgani shu yerda ko'rinadi. Yuborish ishlamasa, sababi shu yerda yoziladi.</p>
+ ${l.map(x=>`<div style="padding:7px 0;border-bottom:1px solid var(--ln)"><span class="mut">${tm(x.t)}</span><div>${esc(x.m)}</div></div>`).join('')||'<div class="empty">Hali hech narsa bo\'lmagan.<br>Server qayta ishga tushgan bo\'lishi mumkin: «Hozir yuborish» ni bosib ko\'ring.</div>'}</div>`;
+ $('#bk').onclick=()=>{tab='home';nav();show()}}
 async function showDiag(){V.innerHTML='<div class="c"><h2>🩺 Tekshiruv</h2><div class="sk"></div><div class="sk"></div><div class="sk"></div></div>';
  try{const [d,h]=await Promise.all([api('diag'),fetch('/health').then(r=>r.json())]);
  V.innerHTML=`<div class="c"><h2>🩺 Tekshiruv</h2>${d.map(x=>`<div class="post" style="cursor:default"><div class="jm"><b>${x.ok?'✅':'❌'} ${esc(x.n)}</b> <span class="mut">${x.ms} ms</span><div class="${x.ok?'mut':'err'}">${esc(x.d)}</div></div></div>`).join('')}
