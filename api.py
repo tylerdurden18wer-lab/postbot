@@ -30,7 +30,7 @@ async def need(u):  # ulangan client yoki 401
 async def state(u: int = Depends(auth)):
     c, me = await T.me_of(u)
     if me and u not in T.GC: T.start_groups(u)
-    return {"auth": me is not None, "me": fullname(me) if me else None, "phone": getattr(me, "phone", None), "min": config.MIN_INTERVAL}
+    return {"auth": me is not None, "me": fullname(me) if me else None, "phone": getattr(me, "phone", None), "min": config.MIN_INTERVAL, "bot": config.BOT_USERNAME}
 
 @r.post("/send_code")
 async def send_code(b: dict, u: int = Depends(auth)):
@@ -77,28 +77,34 @@ async def groups(refresh: int = 0, u: int = Depends(auth)):
     if g["err"] == "login": raise HTTPException(401, "login")
     return {"d": g["d"], "done": g["done"], "err": g["err"]}
 
-@r.get("/saved")
-async def saved(u: int = Depends(auth)):  # e'lonlar "Saqlangan xabarlar" dan olinadi
-    c = await need(u); out = []
-    try:
-        async for m in c.iter_messages("me", limit=30):
-            kind = "video" if m.video else "rasm" if m.photo else "sticker" if m.sticker else "fayl" if m.media else "matn"
-            out.append({"id": m.id, "text": (m.message or "")[:90], "kind": kind})
-    except T.DEAD: await T.dead(u); raise HTTPException(401, "login")
-    return out
+@r.post("/new_post")
+async def new_post(u: int = Depends(auth)):  # foydalanuvchi botga post yuborishini kutamiz
+    c, me = await T.me_of(u)
+    if me is None: raise HTTPException(401, "login")
+    if me.id != u: raise HTTPException(400, f"Post qo'shish uchun ulangan akkaunt ({fullname(me)}) bilan botga kiring. Hozir boshqa akkauntdasiz.")
+    if not config.BOT_USERNAME: raise HTTPException(500, "Bot username aniqlanmadi (BOT_TOKEN ni tekshiring).")
+    T.WAIT[u] = time.time(); return {"bot": config.BOT_USERNAME}
+
+@r.get("/posts")
+def posts(u: int = Depends(auth)):
+    return q("select id,title,kind,preview,created from ads where user_id=? and preview!='' order by id desc", (u,))
+
+@r.delete("/posts/{i}")
+def del_post(i: int, u: int = Depends(auth)):
+    q("delete from jobs where ad_id=? and user_id=?", (i, u)); q("delete from ads where id=? and user_id=?", (i, u)); return {"ok": 1}
 
 @r.get("/jobs")
 def jobs(u: int = Depends(auth)):
     return [dict(j, err=ERR.get(j["id"]), chats=json.loads(j["chats"])) for j in
-            q("select j.*, a.title from jobs j left join ads a on a.id=j.ad_id where j.user_id=? order by j.id desc", (u,))]
+            q("select j.*, a.title, a.preview, a.kind from jobs j left join ads a on a.id=j.ad_id where j.user_id=? order by j.id desc", (u,))]
 
 @r.post("/jobs")
 def add_job(b: dict, u: int = Depends(auth)):
     if int(b["interval"]) < config.MIN_INTERVAL: raise HTTPException(400, f"Interval eng kamida {config.MIN_INTERVAL} daqiqa bo'lishi kerak.")
     if not b["chats"] or len(b["chats"]) > config.MAX_CHATS: raise HTTPException(400, f"Guruhlar soni 1 dan {config.MAX_CHATS} gacha bo'lishi kerak.")
+    if not q("select 1 from ads where id=? and user_id=?", (b["ad_id"], u)): raise HTTPException(400, "Post topilmadi.")
     if q("select count(*) n from jobs where user_id=?", (u,))[0]["n"] >= config.MAX_JOBS: raise HTTPException(400, f"Eng ko'pi bilan {config.MAX_JOBS} ta vazifa.")
-    c = D.execute("insert into ads(user_id,msg_id,title) values(?,?,?)", (u, b["msg_id"], b.get("title") or "E'lon")); D.commit()
-    q("insert into jobs(user_id,ad_id,chats,interval) values(?,?,?,?)", (u, c.lastrowid, json.dumps(b["chats"]), int(b["interval"]))); return {"ok": 1}
+    q("insert into jobs(user_id,ad_id,chats,interval) values(?,?,?,?)", (u, b["ad_id"], json.dumps(b["chats"]), int(b["interval"]))); return {"ok": 1}
 
 @r.post("/jobs/{i}/toggle")
 def toggle(i: int, u: int = Depends(auth)): q("update jobs set active=1-active where id=? and user_id=?", (i, u)); return {"ok": 1}

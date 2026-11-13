@@ -31,8 +31,8 @@ async def run_job(j):
     c, me = await T.me_of(u)
     if me is None: api.ERR[j["id"]] = "Akkaunt ulanmagan. Ilovaga kirib, qaytadan ulang."; return
     ad = q("select * from ads where id=?", (j["ad_id"],))
-    m = await c.get_messages("me", ids=ad[0]["msg_id"]) if ad else None
-    if not m: api.ERR[j["id"]] = "E'lon Saqlangan xabarlardan topilmadi (o'chirib yuborilgan bo'lishi mumkin)."; return
+    m = await c.get_messages(ad[0]["peer"] or "me", ids=ad[0]["msg_id"]) if ad else None
+    if not m: api.ERR[j["id"]] = "Post topilmadi (bot bilan chatdan o'chirib yuborilgan bo'lishi mumkin). Postni qaytadan qo'shing."; return
     for chat in json.loads(j["chats"]):
         try:
             s = await send(c, chat, m)
@@ -74,8 +74,59 @@ async def start_cmd(e):
         else: await e.respond("WEBAPP_URL sozlanmagan (Railway > Variables).")
     except Exception as ex: T.log("start xato:", repr(ex))
 
+def kind_of(m):
+    return "video" if m.video else "rasm" if m.photo else "sticker" if m.sticker else "fayl" if m.media else "matn"
+
+def reply(chat_id, text):  # bot javobi + Mini App tugmasi
+    d = {"chat_id": chat_id, "text": text}
+    if config.WEBAPP_URL: d["reply_markup"] = open_btn()
+    tgapi("sendMessage", d)
+
+async def capture(uid, text, date, grouped):
+    """Foydalanuvchi botga yuborgan postni uning O'Z akkauntidagi bot bilan chatdan topib, saqlaydi."""
+    if not T.has_saved(uid): return "noauth"
+    if time.time() - T.WAIT.get(uid, 0) > 900: return "nowait"
+    if grouped and T.LASTG.get(uid) == grouped: return "album"
+    c, me = await T.me_of(uid)
+    if me is None: return "noauth"
+    if me.id != uid: return "other"
+    found = None
+    for _ in range(4):
+        cand = [m for m in await c.get_messages(config.BOT_USERNAME, limit=8)
+                if m.out and (m.message or "") == (text or "") and abs((m.date - date).total_seconds()) < 120]
+        if cand: found = min(cand, key=lambda m: abs((m.date - date).total_seconds())); break
+        await asyncio.sleep(1.5)
+    if not found: return "notfound"
+    if q("select 1 from ads where user_id=? and peer=? and msg_id=?", (uid, config.BOT_USERNAME, found.id)): return "dup"
+    kind = kind_of(found); body = (found.message or "").strip()
+    prev = (body[:140] or {"video": "🎬 Video", "rasm": "🖼 Rasm", "sticker": "🎭 Stiker", "fayl": "📎 Fayl"}.get(kind, "Post"))
+    q("insert into ads(user_id,msg_id,title,peer,kind,preview,created) values(?,?,?,?,?,?,?)",
+      (uid, found.id, prev[:30], config.BOT_USERNAME, kind, prev, time.time()))
+    T.WAIT[uid] = time.time()
+    if grouped: T.LASTG[uid] = grouped
+    return "ok"
+
+REPLY = {"ok": "✅ Post qabul qilindi! Ilovaga qaytib, guruhlar va vaqtni tanlang.\nYana post qo'shmoqchi bo'lsangiz, shu yerga yuboravering.",
+         "nowait": "Yangi post qo'shish uchun avval ilovada «➕ Yangi post qo'shish» tugmasini bosing.",
+         "noauth": "Avval ilovada Telegram akkauntingizni ulang.",
+         "other": "Post qo'shish uchun ilovaga ulangan Telegram akkaunt bilan yuboring.",
+         "notfound": "Postni topa olmadim. Qaytadan yuboring yoki ilovada «Yangi post» ni bosing.",
+         "dup": "Bu post allaqachon qo'shilgan.", "error": "Xatolik yuz berdi, qaytadan urinib ko'ring."}
+
+@bot.on(events.NewMessage(incoming=True))
+async def on_private(e):  # botga yuborilgan oddiy xabar = yangi post
+    if not e.is_private or (e.raw_text or "").startswith("/"): return
+    try: res = await capture(e.sender_id, e.message.message, e.message.date, e.message.grouped_id)
+    except Exception as ex: T.log("capture xato:", type(ex).__name__, ex); res = "error"
+    if res == "album": return
+    try: await asyncio.to_thread(reply, e.sender_id, REPLY[res])
+    except Exception as ex: T.log("javob yuborilmadi:", ex)
+
 async def start_bot():
     global BOT_OK, BOT_ERR
+    try:
+        config.BOT_USERNAME = json.loads(await asyncio.to_thread(tgapi, "getMe", {}))["result"]["username"]
+    except Exception as e: BOT_ERR = f"getMe: {type(e).__name__}: {e}"; T.log("BOT XATO:", BOT_ERR); return
     try:
         await bot.start(bot_token=config.BOT_TOKEN); BOT_OK = True
         if config.WEBAPP_URL:

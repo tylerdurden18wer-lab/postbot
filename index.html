@@ -46,6 +46,16 @@ nav button{flex:1;background:none;color:var(--mut);padding:9px 2px;font-size:12p
 .steps{display:flex;gap:6px;margin-bottom:12px}.steps i{flex:1;height:4px;border-radius:4px;background:var(--line);transition:.4s}.steps i.on{background:linear-gradient(90deg,var(--b),var(--a))}
 .hero{text-align:center;padding:10px 0 4px}.hero .em{font-size:46px;animation:wob 3s ease-in-out infinite;display:block}
 .code{font-size:26px;letter-spacing:10px;text-align:center}
+
+.pills{display:flex;gap:6px;margin-bottom:12px}.pill{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;padding:8px 4px;border-radius:14px;background:var(--card);border:1px solid var(--line);font-size:12px;color:var(--mut);font-weight:600;transition:.3s}
+.pill b{display:grid;place-items:center;width:20px;height:20px;border-radius:50%;background:var(--line);font-size:11px;color:var(--tx)}
+.pill.on{color:var(--tx);border-color:var(--a)}.pill.on b,.pill.ok b{background:linear-gradient(135deg,var(--b),var(--a));color:#fff}.pill.ok{color:var(--tx)}
+.post{display:flex;align-items:center;gap:12px;padding:12px;border-radius:16px;margin:8px 0;background:rgba(255,255,255,.05);border:1px solid transparent;cursor:pointer;transition:.2s;animation:in .3s both}
+.post.on{border-color:var(--a);background:rgba(56,225,198,.14)}.pi{font-size:24px;width:42px;height:42px;display:grid;place-items:center;border-radius:12px;background:var(--card);flex:none}
+.pt{flex:1;min-width:0}.pp{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;word-break:break-word}
+.how div{margin:10px 0;display:flex;gap:8px;align-items:flex-start}.empty{text-align:center;padding:22px 8px;color:var(--mut)}.empty i{font-style:normal;font-size:40px;display:block;margin-bottom:6px}
+.acts{display:flex;gap:8px}.acts button{flex:1}.pre{display:inline-block;margin:4px 4px 0 0;padding:9px 13px;border-radius:99px;background:var(--card);border:1px solid var(--line);cursor:pointer;transition:.2s}.pre.on{background:linear-gradient(135deg,var(--b),var(--a));color:#fff;border-color:transparent}
+.done{text-align:center;padding:18px 6px}.done .em{font-size:56px;display:block;animation:pop .5s}
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style></head><body>
 <div class="blob b1"></div><div class="blob b2"></div>
@@ -55,14 +65,14 @@ nav button{flex:1;background:none;color:var(--mut);padding:9px 2px;font-size:12p
 const tg=Telegram.WebApp;tg.ready();tg.expand();try{tg.setHeaderColor('#0a0f1f');tg.setBackgroundColor('#0a0f1f')}catch(e){}
 const $=s=>document.querySelector(s),V=$('#v');
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'})[c]);
-const st={msg:null,title:'',sel:new Map(),iv:60,min:5,me:'',authed:false};let tab='new',gen=0;
+const st={msg:null,title:'',sel:new Map(),iv:60,min:5,me:'',authed:false,step:1,mode:'',ad:null};let tab='new',gen=0;
 function toast(t){const e=document.createElement('div');e.className='toast';e.textContent=t;document.body.append(e);setTimeout(()=>e.remove(),4500)}
 async function api(p,m='GET',b){const c=new AbortController();const to=setTimeout(()=>c.abort(),90000);
  const r=await fetch('/api/'+p,{method:m,signal:c.signal,headers:{'X-Init-Data':tg.initData,'Content-Type':'application/json'},body:b?JSON.stringify(b):undefined}).catch(()=>{throw new Error('Server javob bermadi')});clearTimeout(to);
  const j=await r.json().catch(()=>({}));
  if(r.status==401){gen++;login();throw new Error('login')}
  if(!r.ok){const e=j.detail||('Xato '+r.status);toast(e);throw new Error(e)}return j}
-const TABS=[['new','🚀 Yuborish'],['jobs','📋 Vazifalar'],['stat','📊 Statistika'],['acc','👤 Akkaunt']];
+const TABS=[['new','➕ Yangi'],['jobs','📋 Vazifalar'],['stat','📊 Statistika'],['acc','👤 Akkaunt']];
 function nav(){const n=$('#nav');n.hidden=false;n.innerHTML=TABS.map(([k,t])=>`<button class="${k==tab?'on':''}" data-k="${k}">${t}</button>`).join('');
  n.querySelectorAll('button').forEach(b=>b.onclick=()=>{tab=b.dataset.k;nav();show()})}
 function setMe(n){$('#me').innerHTML=n?`<div class="av">${esc(n[0].toUpperCase())}</div>${esc(n)}`:''}
@@ -87,17 +97,38 @@ async function doLogin(pw){const b=$('#ok');b.disabled=true;
 /* ---------- bo'limlar ---------- */
 async function show(){const g=++gen;V.innerHTML='<div class="card"><div class="sk"></div><div class="sk"></div><div class="sk"></div></div>';
  try{await ({new:vNew,jobs:vJobs,stat:vStat,acc:vAcc})[tab](g)}catch(e){if(e.message!=='login'&&g===gen)V.innerHTML=`<div class="card"><b>Xato</b><div class="err">${esc(e.message)}</div></div>`}}
-async function vNew(g){const s=await api('saved');if(g!==gen)return;
- V.innerHTML=`<div class="card"><h2><span class="num">1</span>E'lonni tanlang</h2><p class="mut">E'lonni Telegram'dagi <b>Saqlangan xabarlar</b>ga yozing (video, premium emoji, stiker ham bo'ladi), keyin shu yerda tanlang.</p>
- ${s.map(m=>`<div class="item ${st.msg==m.id?'on':''}" data-m="${m.id}" data-t="${esc(m.text.slice(0,25)||m.kind)}"><span class="mut">${m.kind}</span> ${esc(m.text)||'(matnsiz)'}</div>`).join('')||'<p class="mut" style="margin-top:8px">Saqlangan xabarlar bo\'sh. Avval Telegram\'da o\'zingizga e\'lon yozing.</p>'}</div>
- <div class="card"><div class="row"><h2><span class="num">2</span>Guruhlarni tanlang</h2><span id="cnt" class="mut"></span></div><div id="gs" class="mut">Guruhlar yuklanmoqda…</div>
+const KI={matn:'📝',rasm:'🖼',video:'🎬',sticker:'🎭',fayl:'📎'};
+const pills=n=>`<div class="pills">${['Post','Guruhlar','Vaqt'].map((t,i)=>`<div class="pill ${i+1==n?'on':i+1<n?'ok':''}"><b>${i+1<n?'✓':i+1}</b>${t}</div>`).join('')}</div>`;
+const ago=ts=>{const m=Math.round((Date.now()/1000-ts)/60);return m<1?'hozir':m<60?m+' daq oldin':m<1440?Math.round(m/60)+' soat oldin':Math.round(m/1440)+' kun oldin'};
+const fmt=m=>m%1440==0?(m/1440)+' kun':m%60==0?(m/60)+' soat':m+' daqiqa';
+async function vNew(g){if(st.mode=='done')return vDone();if(st.mode=='newpost')return vNewPost(g);if(st.step==2)return vStep2(g);if(st.step==3)return vStep3(g);return vStep1(g)}
+async function vStep1(g){const p=await api('posts');if(g!==gen)return;
+ if(!st.ad&&p.length&&Date.now()/1000-p[0].created<600)st.ad=p[0].id;   // yangi qo'shilgan post avtomatik tanlanadi
+ if(st.ad&&!p.find(x=>x.id==st.ad))st.ad=null;
+ V.innerHTML=pills(1)+`<div class="card"><h2>Qaysi postni tarqatamiz?</h2><button id="np" style="width:100%;margin:4px 0 6px">➕ Yangi post qo'shish</button>
+ ${p.map(x=>`<div class="post ${st.ad==x.id?'on':''}" data-a="${x.id}"><div class="pi">${KI[x.kind]||'📝'}</div><div class="pt"><div class="pp">${esc(x.preview)}</div><div class="mut">${esc(x.kind)} · ${ago(x.created)}</div></div><button class="s g" data-d="${x.id}">🗑</button></div>`).join('')
+ ||'<div class="empty"><i>📭</i>Hali post yo\'q.<br>«Yangi post qo\'shish» ni bosing va postni botga yuboring.</div>'}</div>
+ <button id="nx" style="width:100%" ${st.ad?'':'disabled'}>Davom etish →</button>`;
+ $('#np').onclick=()=>{st.mode='newpost';show()};
+ V.querySelectorAll('[data-a]').forEach(c=>c.onclick=e=>{if(e.target.closest('[data-d]'))return;st.ad=+c.dataset.a;V.querySelectorAll('[data-a]').forEach(x=>x.classList.toggle('on',x===c));$('#nx').disabled=false});
+ V.querySelectorAll('[data-d]').forEach(b=>b.onclick=e=>{e.stopPropagation();tg.showConfirm('Postni va unga bog\'liq vazifalarni o\'chiraymi?',async ok=>{if(!ok)return;await api('posts/'+b.dataset.d,'DELETE');if(st.ad==b.dataset.d)st.ad=null;show()})});
+ $('#nx').onclick=()=>{st.step=2;show()}}
+async function vNewPost(g){let bot='';try{bot=(await api('new_post','POST')).bot}catch(e){if(e.message!=='login'){st.mode='';show()}return}
+ const known=new Set((await api('posts')).map(x=>x.id));if(g!==gen)return;
+ V.innerHTML=`<div class="card"><h2>➕ Yangi post qo'shish</h2><div class="how"><div><span class="num">1</span><span>Pastdagi tugma bilan <b>botga o'ting</b></span></div>
+ <div><span class="num">2</span><span>Postni shu yerga yuboring: matn, rasm, video, premium emoji, stiker — qanday bo'lsa, shunday</span></div>
+ <div><span class="num">3</span><span>Bot «✅ qabul qilindi» deydi. Keyin <b>ilovaga qayting</b> (botdagi «Ochish» tugmasi)</span></div></div>
+ <button id="gb" style="width:100%;margin-top:6px">🤖 Botga o'tish</button><div id="wt" class="mut" style="text-align:center;margin:12px 0 4px">⏳ Post kutilmoqda…</div>
+ <button class="g s" id="cn">← Bekor qilish</button></div>`;
+ $('#gb').onclick=()=>tg.openTelegramLink('https://t.me/'+bot);$('#cn').onclick=()=>{st.mode='';show()};
+ const poll=async()=>{if(g!==gen||!$('#wt'))return;try{const p=await api('posts');const n=p.find(x=>!known.has(x.id));if(n){st.ad=n.id;st.mode='';toast('Post qabul qilindi ✅');show();return}}catch(e){}setTimeout(poll,2000)};setTimeout(poll,2000)}
+async function vStep2(g){
+ V.innerHTML=pills(2)+`<div class="card"><div class="row"><h2>Qaysi guruhlarga?</h2><span id="cnt" class="mut"></span></div><div id="gs" class="mut">Guruhlar yuklanmoqda…</div>
  <input id="q" placeholder="🔍 Guruhni qidirish" style="margin-top:8px"><div class="row" style="justify-content:flex-start;flex-wrap:wrap">
  <button class="s g" id="all">Ko'ringanlarini tanlash</button><button class="s g" id="none">Tozalash</button><button class="s g" id="rf">🔄</button></div>
  <div id="gl"><div class="sk"></div><div class="sk"></div><div class="sk"></div></div></div>
- <div class="card"><h2><span class="num">3</span>Necha daqiqada bir yuborilsin?</h2><input id="iv" type="number" min="${st.min}" value="${Math.max(st.iv,st.min)}">
- <p class="mut" style="margin-bottom:10px">«Boshlash» bosilgach birinchi yuborish darhol bo'ladi, keyin har shuncha daqiqada takrorlanadi. Eng kamida ${st.min} daqiqa.</p><button id="mk" style="width:100%">🚀 Boshlash</button></div>`;
- const cnt=()=>$('#cnt').textContent=st.sel.size?st.sel.size+' ta tanlandi':'';
- V.querySelectorAll('.item').forEach(i=>i.onclick=()=>{st.msg=+i.dataset.m;st.title=i.dataset.t;V.querySelectorAll('.item').forEach(x=>x.classList.toggle('on',x===i))});
+ <div class="acts"><button class="g" id="bk">← Orqaga</button><button id="nx" disabled>Davom etish →</button></div>`;
+ const cnt=()=>{$('#cnt').textContent=st.sel.size?st.sel.size+' ta tanlandi':'';$('#nx').disabled=!st.sel.size};
  let gl=[],shown=[];
  const draw=()=>{const v=$('#q').value.toLowerCase();shown=gl.filter(x=>x.title.toLowerCase().includes(v));
   $('#gl').innerHTML=shown.map(x=>`<div class="gr ${st.sel.has(x.id)?'on':''}" data-g="${x.id}"><div class="av" style="background:hsl(${Math.abs(x.id)%360},60%,45%)">${esc((x.title[0]||'?').toUpperCase())}</div>
@@ -108,17 +139,28 @@ async function vNew(g){const s=await api('saved');if(g!==gen)return;
   try{const r=await api('groups'+(f?'?refresh=1':''));if(g!==gen||!$('#gl'))return;gl=r.d;draw();
    $('#gs').textContent=r.err?'Xato: '+r.err:r.done?(gl.length?'✅ '+gl.length+' ta guruh topildi':'Guruh topilmadi. Akkauntingiz guruhga a\'zo ekanini tekshiring.'):'Yuklanmoqda… '+gl.length+' ta topildi';
    if(!r.done)setTimeout(()=>poll(),1200)}catch(e){if(e.message!=='login'&&$('#gs'))$('#gs').textContent='Xato: '+e.message}};
- poll();$('#rf').onclick=()=>{$('#gs').textContent='Yangilanmoqda…';poll(1)};
- $('#q').oninput=draw;
- $('#all').onclick=()=>{shown.forEach(x=>st.sel.set(x.id,x.title));draw()};
- $('#none').onclick=()=>{st.sel.clear();draw()};
- $('#iv').oninput=e=>st.iv=e.target.value;
- $('#mk').onclick=async()=>{if(!st.msg)return toast('1-qadam: e\'lonni tanlang');if(!st.sel.size)return toast('2-qadam: guruh tanlang');
-  const iv=parseInt($('#iv').value);if(!iv||iv<st.min)return toast('Eng kamida '+st.min+' daqiqa');
-  await api('jobs','POST',{msg_id:st.msg,title:st.title,chats:[...st.sel].map(([id,title])=>({id,title})),interval:iv});
-  st.msg=null;st.sel.clear();toast('Boshlandi ✅');tab='jobs';nav();show()}}
+ poll();$('#rf').onclick=()=>{$('#gs').textContent='Yangilanmoqda…';poll(1)};cnt();
+ $('#q').oninput=draw;$('#all').onclick=()=>{shown.forEach(x=>st.sel.set(x.id,x.title));draw()};$('#none').onclick=()=>{st.sel.clear();draw()};
+ $('#bk').onclick=()=>{st.step=1;show()};$('#nx').onclick=()=>{st.step=3;show()}}
+const PRE=[10,30,60,180,360,720,1440];
+async function vStep3(g){const p=(await api('posts')).find(x=>x.id==st.ad);if(g!==gen)return;if(!p){st.step=1;return show()}
+ st.iv=Math.max(+st.iv||60,st.min);
+ V.innerHTML=pills(3)+`<div class="card"><h2>Necha daqiqada bir yuborilsin?</h2><div id="pr">${PRE.filter(m=>m>=st.min).map(m=>`<span class="pre ${st.iv==m?'on':''}" data-m="${m}">${fmt(m)}</span>`).join('')}</div>
+ <div class="mut" style="margin:10px 0 4px">Yoki o'zingiz kiriting (daqiqada):</div><input id="iv" type="number" min="${st.min}" value="${st.iv}"></div>
+ <div class="card"><h2>Xulosa</h2><div class="post" style="cursor:default"><div class="pi">${KI[p.kind]||'📝'}</div><div class="pt"><div class="pp">${esc(p.preview)}</div></div></div>
+ <div id="sm" class="mut"></div><p class="mut" style="margin-top:6px">«Saqlash» bosilgach birinchi yuborish darhol bo'ladi, keyin shu vaqt oralig'ida takrorlanadi.</p></div>
+ <div class="acts"><button class="g" id="bk">← Orqaga</button><button id="mk">✅ Saqlash va boshlash</button></div>`;
+ const sm=()=>$('#sm').textContent=st.sel.size+' ta guruhga · har '+fmt(+st.iv||0)+' da';sm();
+ V.querySelectorAll('.pre').forEach(c=>c.onclick=()=>{st.iv=+c.dataset.m;$('#iv').value=st.iv;V.querySelectorAll('.pre').forEach(x=>x.classList.toggle('on',x===c));sm()});
+ $('#iv').oninput=e=>{st.iv=+e.target.value;V.querySelectorAll('.pre').forEach(x=>x.classList.toggle('on',+x.dataset.m==st.iv));sm()};
+ $('#bk').onclick=()=>{st.step=2;show()};
+ $('#mk').onclick=async e=>{const iv=parseInt($('#iv').value);if(!iv||iv<st.min)return toast('Eng kamida '+st.min+' daqiqa');e.target.disabled=true;
+  try{await api('jobs','POST',{ad_id:st.ad,chats:[...st.sel].map(([id,title])=>({id,title})),interval:iv});st.mode='done';show()}catch(x){e.target.disabled=false}}}
+function vDone(){V.innerHTML=`<div class="card done"><span class="em">🎉</span><h2 style="font-size:20px">Vazifa ishga tushdi!</h2><p class="mut" style="margin:6px 0 14px">Birinchi yuborish bir necha soniyada boshlanadi. Natijani «Vazifalar» va «Statistika» bo'limlarida ko'rasiz.</p>
+ <button id="more" style="width:100%;margin-bottom:8px">➕ Yana e'lon qo'shish</button><button class="g" id="jb" style="width:100%">📋 Vazifalarni ko'rish</button></div>`;
+ $('#more').onclick=()=>{st.mode='';st.step=1;st.ad=null;st.sel.clear();show()};$('#jb').onclick=()=>{st.mode='';st.step=1;st.ad=null;st.sel.clear();tab='jobs';nav();show()}}
 async function vJobs(g){const j=await api('jobs');if(g!==gen)return;
- V.innerHTML=j.map(x=>`<div class="card"><div class="row"><b>${esc(x.title)}</b><span class="mut">${x.chats.length} guruh · ${x.interval} daq</span></div>
+ V.innerHTML=j.map(x=>`<div class="card"><div class="row"><b>${KI[x.kind]||'📝'} ${esc(x.title)}</b><span class="mut">${x.chats.length} guruh · ${fmt(x.interval)}</span></div>
  <div class="mut">${x.active?'Keyingi yuborish: '+new Date(Math.max(x.next_run,Date.now()/1000)*1000).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}):'⏸ To\'xtatilgan'}</div>
  ${x.err?`<div class="err">Xato: ${esc(x.err)}</div>`:''}
  <div class="row" style="margin-top:10px"><button class="s" data-n="${x.id}">Hozir yuborish</button><button class="s g" data-p="${x.id}">${x.active?'⏸ To\'xtatish':'▶️ Yoqish'}</button><button class="s d" data-x="${x.id}">🗑</button></div></div>`).join('')||'<div class="card mut">Hali vazifa yo\'q. «Yuborish» bo\'limidan boshlang.</div>';
@@ -131,7 +173,7 @@ async function vAcc(g){const s=await api('state');if(g!==gen)return;
  V.innerHTML=`<div class="card"><h2>Ulangan akkaunt</h2><div class="row" style="justify-content:flex-start"><div class="av" style="width:44px;height:44px;font-size:18px">${esc((s.me||'?')[0].toUpperCase())}</div><div><b>${esc(s.me)}</b><div class="mut">${s.phone?'+'+esc(s.phone):''}</div></div></div></div>
  <div class="card"><h2>Boshqa raqam ulash</h2><p class="mut" style="margin-bottom:10px">Bosganingizda akkaunt serverdan uziladi, barcha vazifalar va statistika o'chiriladi. Keyin boshqa raqam bilan kirishingiz mumkin.</p><button class="d" id="lo" style="width:100%">Akkauntni uzish</button></div>
  <button class="g" id="dg" style="width:100%;margin-bottom:10px">🩺 Tekshiruv (muammo bo'lsa bosing)</button><p class="mut">Telegram → Sozlamalar → Qurilmalar orqali ham istalgan payt uzishingiz mumkin.</p>`;$('#dg').onclick=showDiag;
- $('#lo').onclick=()=>tg.showConfirm('Akkauntni uzib, barcha vazifalarni o\'chiraymi?',async ok=>{if(!ok)return;await api('logout','POST');st.sel.clear();st.msg=null;toast('Akkaunt uzildi');login()})}
+ $('#lo').onclick=()=>tg.showConfirm('Akkauntni uzib, barcha vazifalarni o\'chiraymi?',async ok=>{if(!ok)return;await api('logout','POST');st.sel.clear();st.ad=null;st.step=1;st.mode='';toast('Akkaunt uzildi');login()})}
 async function showDiag(){V.innerHTML='<div class="card"><h2>🩺 Tekshiruv</h2><div class="sk"></div><div class="sk"></div><div class="sk"></div></div>';
  try{const [d,h]=await Promise.all([api('diag'),fetch('/health').then(r=>r.json())]);
  V.innerHTML=`<div class="card"><h2>🩺 Tekshiruv</h2>${d.map(x=>`<div class="item" style="cursor:default"><b>${x.ok?'✅':'❌'} ${esc(x.n)}</b> <span class="mut">${x.ms} ms</span><div class="${x.ok?'mut':'err'}">${esc(x.d)}</div></div>`).join('')}

@@ -9,5 +9,8 @@ create table if not exists jobs(id integer primary key, user_id int, ad_id int, 
 create table if not exists sent(id integer primary key, user_id int, ad_id int, chat_id int, chat_title text, msg_id int, ts real);
 create table if not exists replies(id integer primary key, user_id int, chat_id int, msg_id int, sender int, ts real);
 """)
+for _c in ("peer text default 'me'", "kind text default 'matn'", "preview text default ''", "created real default 0"):
+    try: D.execute(f"alter table ads add column {_c}")   # eski bazani yangilash
+    except sqlite3.OperationalError: pass
 def q(sql, a=()):
     c = D.execute(sql, a); D.commit(); return [dict(r) for r in c.fetchall()]

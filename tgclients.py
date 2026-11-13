@@ -5,7 +5,8 @@ from telethon.sessions import StringSession
 import config
 from db import q
 
-CL, PH, GC, HOOKS = {}, {}, {}, []   # clientlar, kod so'rovlari, guruhlar keshi, "akkaunt uzildi" xabarchilari
+CL, PH, GC, HOOKS = {}, {}, {}, []
+WAIT, LASTG = {}, {}   # "yangi post" kutish vaqti, albom nazorati   # clientlar, kod so'rovlari, guruhlar keshi, "akkaunt uzildi" xabarchilari
 DEAD = (errors.AuthKeyUnregisteredError, errors.SessionRevokedError, errors.SessionExpiredError,
         errors.AuthKeyDuplicatedError, errors.UnauthorizedError)
 
