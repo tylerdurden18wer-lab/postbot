@@ -1,0 +1,4 @@
+fastapi
+uvicorn
+telethon>=1.36,<2
+cryptg

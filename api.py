@@ -1,0 +1,141 @@
+"""Mini App uchun HTTP API."""
+import json, time, hmac, hashlib
+from urllib.parse import parse_qsl
+from fastapi import APIRouter, Header, HTTPException, Depends
+from telethon import errors
+import config, tgclients as T
+from db import q, D
+
+r = router = APIRouter(prefix="/api")
+ERR = {}  # vazifa xatolari (worker yozadi)
+
+def auth(x_init_data: str = Header("")):  # Telegram Mini App imzosini tekshiradi -> foydalanuvchi ID
+    d = dict(parse_qsl(x_init_data)); h = d.pop("hash", "")
+    s = "\n".join(f"{k}={v}" for k, v in sorted(d.items()))
+    k = hmac.new(b"WebAppData", config.BOT_TOKEN.encode(), hashlib.sha256).digest()
+    if not h or not hmac.compare_digest(hmac.new(k, s.encode(), hashlib.sha256).hexdigest(), h):
+        raise HTTPException(403, "Ruxsat yo'q. Ilovani Telegram ichidan oching (BOT_TOKEN to'g'riligini ham tekshiring).")
+    if time.time() - int(d.get("auth_date", 0)) > 3 * 86400:
+        raise HTTPException(403, "Sessiya eskirdi. Ilovani yopib, qayta oching.")
+    return int(json.loads(d["user"])["id"])
+
+def fullname(me): return (f"{me.first_name or ''} {me.last_name or ''}").strip() or me.username or "Akkaunt"
+
+async def need(u):  # ulangan client yoki 401
+    c, me = await T.me_of(u)
+    if me is None: raise HTTPException(401, "login")
+    return c
+
+@r.get("/state")
+async def state(u: int = Depends(auth)):
+    c, me = await T.me_of(u)
+    if me and u not in T.GC: T.start_groups(u)
+    return {"auth": me is not None, "me": fullname(me) if me else None, "phone": getattr(me, "phone", None), "min": config.MIN_INTERVAL}
+
+@r.post("/send_code")
+async def send_code(b: dict, u: int = Depends(auth)):
+    c, me = await T.me_of(u)
+    if me: return {"already": True}
+    phone = "".join(ch for ch in b.get("phone", "") if ch.isdigit() or ch == "+")
+    if not phone.startswith("+"): phone = "+" + phone
+    try:
+        x = await c.send_code_request(phone); T.PH[u] = {"phone": phone, "hash": x.phone_code_hash}
+    except errors.PhoneNumberInvalidError: raise HTTPException(400, "Telefon raqam noto'g'ri. Misol: +998901234567")
+    except errors.FloodWaitError as e: raise HTTPException(400, f"Juda ko'p urinish. {e.seconds} soniya kuting.")
+    except errors.ApiIdInvalidError: raise HTTPException(400, "API_ID / API_HASH noto'g'ri (my.telegram.org dan oling).")
+    except Exception as e: raise HTTPException(400, f"{type(e).__name__}: {e}")
+    return {"ok": 1}
+
+@r.post("/login")
+async def login(b: dict, u: int = Depends(auth)):
+    c = await T.get_client(u); pw = b.get("password"); p = T.PH.get(u)
+    if not pw and not p: raise HTTPException(400, "Avval kod so'rang.")
+    try:
+        if pw: await c.sign_in(password=pw)
+        else: await c.sign_in(p["phone"], (b.get("code") or "").replace(" ", ""), phone_code_hash=p["hash"])
+    except errors.SessionPasswordNeededError: return {"need_password": True}
+    except errors.PasswordHashInvalidError: raise HTTPException(400, "Parol noto'g'ri.")
+    except errors.PhoneCodeInvalidError: raise HTTPException(400, "Kod noto'g'ri.")
+    except errors.PhoneCodeExpiredError: raise HTTPException(400, "Kod eskirgan. Qaytadan kod so'rang.")
+    except Exception as e: raise HTTPException(400, f"{type(e).__name__}: {e}")
+    me = await c.get_me(); T.save_session(u, c, me); T.PH.pop(u, None); T.start_groups(u)
+    return {"ok": 1}
+
+@r.post("/logout")
+async def logout(u: int = Depends(auth)):  # akkauntni uzish + barcha ma'lumotlarni o'chirish
+    c = await T.get_client(u)
+    try: await c.log_out()
+    except Exception: pass
+    await T.reset(u); T.wipe(u); q("delete from users where uid=?", (u,)); T.PH.pop(u, None)
+    return {"ok": 1}
+
+@r.get("/groups")
+async def groups(refresh: int = 0, u: int = Depends(auth)):
+    g = T.GC.get(u)
+    if refresh or not g or (g["done"] and (g["err"] or time.time() - g["t"] > 600)):
+        await need(u); g = T.start_groups(u)
+    if g["err"] == "login": raise HTTPException(401, "login")
+    return {"d": g["d"], "done": g["done"], "err": g["err"]}
+
+@r.get("/saved")
+async def saved(u: int = Depends(auth)):  # e'lonlar "Saqlangan xabarlar" dan olinadi
+    c = await need(u); out = []
+    try:
+        async for m in c.iter_messages("me", limit=30):
+            kind = "video" if m.video else "rasm" if m.photo else "sticker" if m.sticker else "fayl" if m.media else "matn"
+            out.append({"id": m.id, "text": (m.message or "")[:90], "kind": kind})
+    except T.DEAD: await T.dead(u); raise HTTPException(401, "login")
+    return out
+
+@r.get("/jobs")
+def jobs(u: int = Depends(auth)):
+    return [dict(j, err=ERR.get(j["id"]), chats=json.loads(j["chats"])) for j in
+            q("select j.*, a.title from jobs j left join ads a on a.id=j.ad_id where j.user_id=? order by j.id desc", (u,))]
+
+@r.post("/jobs")
+def add_job(b: dict, u: int = Depends(auth)):
+    if int(b["interval"]) < config.MIN_INTERVAL: raise HTTPException(400, f"Interval eng kamida {config.MIN_INTERVAL} daqiqa bo'lishi kerak.")
+    if not b["chats"] or len(b["chats"]) > config.MAX_CHATS: raise HTTPException(400, f"Guruhlar soni 1 dan {config.MAX_CHATS} gacha bo'lishi kerak.")
+    if q("select count(*) n from jobs where user_id=?", (u,))[0]["n"] >= config.MAX_JOBS: raise HTTPException(400, f"Eng ko'pi bilan {config.MAX_JOBS} ta vazifa.")
+    c = D.execute("insert into ads(user_id,msg_id,title) values(?,?,?)", (u, b["msg_id"], b.get("title") or "E'lon")); D.commit()
+    q("insert into jobs(user_id,ad_id,chats,interval) values(?,?,?,?)", (u, c.lastrowid, json.dumps(b["chats"]), int(b["interval"]))); return {"ok": 1}
+
+@r.post("/jobs/{i}/toggle")
+def toggle(i: int, u: int = Depends(auth)): q("update jobs set active=1-active where id=? and user_id=?", (i, u)); return {"ok": 1}
+@r.post("/jobs/{i}/now")
+def now(i: int, u: int = Depends(auth)): q("update jobs set next_run=0, active=1 where id=? and user_id=?", (i, u)); return {"ok": 1}
+@r.delete("/jobs/{i}")
+def del_job(i: int, u: int = Depends(auth)): q("delete from jobs where id=? and user_id=?", (i, u)); return {"ok": 1}
+
+@r.get("/stats")
+def stats(u: int = Depends(auth)):
+    return {
+        "total": q("select count(*) n from sent where user_id=?", (u,))[0]["n"],
+        "replies": q("select count(*) n from replies where user_id=?", (u,))[0]["n"],
+        "people": q("select count(distinct sender) n from replies where user_id=?", (u,))[0]["n"],
+        "chats": q("""select s.chat_title title, count(*) n,
+            (select count(*) from replies x where x.user_id=s.user_id and x.chat_id=s.chat_id) rep,
+            (select count(distinct sender) from replies x where x.user_id=s.user_id and x.chat_id=s.chat_id) ppl
+            from sent s where s.user_id=? group by s.chat_id order by n desc""", (u,)),
+    }
+
+@r.get("/diag")
+async def diag(u: int = Depends(auth)):  # qadamma-qadam tekshiruv: muammo aynan qayerdaligini ko'rsatadi
+    out = [{"n": "Mini App imzosi (initData)", "ok": True, "d": f"user_id={u}", "ms": 0}]; box = {}
+    async def step(name, fn):
+        t = time.time()
+        try: d = await fn(); ok = True
+        except Exception as e: d = f"{type(e).__name__}: {e}"; ok = False
+        out.append({"n": name, "ok": ok, "d": str(d), "ms": int((time.time() - t) * 1000)}); return ok
+    async def s1(): box["c"] = await T.get_client(u); return "ulandi" if box["c"].is_connected() else "ulanmagan"
+    async def s2():
+        me = await box["c"].get_me(); box["me"] = me
+        if me is None: raise Exception("Akkaunt ulanmagan (kirish kerak yoki sessiya o'lgan)")
+        return f"{fullname(me)} (id {me.id})"
+    async def s3(): return f"{len(await box['c'].get_messages('me', limit=5))} ta xabar o'qildi"
+    async def s4():
+        ds = await box["c"].get_dialogs(limit=40); return f"{len(ds)} chat, shundan {sum(1 for d in ds if d.is_group)} ta guruh"
+    if await step("Telegram serveriga ulanish", s1) and await step("Akkaunt (get_me)", s2):
+        await step("Saqlangan xabarlarni o'qish", s3); await step("Chatlar ro'yxati", s4)
+    out.append({"n": "Bazada saqlangan sessiya", "ok": T.has_saved(u), "d": "bor" if T.has_saved(u) else "yo'q", "ms": 0})
+    return out
