@@ -21,11 +21,6 @@ async def notify_dead(uid):  # akkaunt Telegram tomonidan uzilsa, foydalanuvchig
     except Exception as e: T.log("xabar yuborilmadi:", e)
 T.HOOKS.append(notify_dead)
 
-async def send(c, chat, m):
-    try: return await c.send_message(chat["id"], m)  # matn, premium emoji, video, stiker - aynan o'zidek
-    except ValueError:
-        await c.get_dialogs(); return await c.send_message(chat["id"], m)
-
 FRIENDLY = {"MessageEmptyError": "Post bo'sh yoki qo'llab-quvvatlanmaydigan turda. Postni o'chirib, qaytadan qo'shing.",
     "ChatWriteForbiddenError": "Bu guruhga yozish taqiqlangan.", "UserBannedInChannelError": "Siz bu guruhda cheklangansiz (ban).",
     "ChatAdminRequiredError": "Bu guruhga faqat adminlar yoza oladi.", "ChannelPrivateError": "Guruhga kirish yo'q (chiqib ketgansiz yoki guruh yopilgan).",
@@ -33,30 +28,61 @@ FRIENDLY = {"MessageEmptyError": "Post bo'sh yoki qo'llab-quvvatlanmaydigan turd
     "ChatRestrictedError": "Guruh sizga yozishni cheklagan."}
 def friendly(e): return FRIENDLY.get(type(e).__name__, f"{type(e).__name__}: {e}")
 
+ULOCK = {}  # bitta foydalanuvchining vazifalari ketma-ket ishlaydi (bir vaqtda ko'p yuborish Telegram cheklovini tezlashtiradi)
+
+async def warm(c, u):  # chatlar keshini bir marta yuklaydi (server qayta yoqilgandan keyin kerak)
+    if u in T.WARM: return
+    async for _ in c.iter_dialogs(): pass
+    T.WARM.add(u)
+
+async def send(c, u, chat, m):
+    await asyncio.wait_for(warm(c, u), 900)
+    return await asyncio.wait_for(c.send_message(chat["id"], m), 60)  # matn, premium emoji, video, stiker - aynan o'zidek
+
+def hm(ts): return time.strftime("%H:%M", time.localtime(ts))
+
 async def run_job(j):
-    u = j["user_id"]; E = api.ERR[j["id"]] = {}
-    c, me = await T.me_of(u)
-    if me is None: E["_"] = "Akkaunt ulanmagan. Ilovaga kirib, qaytadan ulang."; return
-    ad = q("select * from ads where id=?", (j["ad_id"],))
-    m = await c.get_messages(ad[0]["peer"] or "me", ids=ad[0]["msg_id"]) if ad else None
-    if not m: E["_"] = "Post topilmadi (bot bilan chatdan o'chirib yuborilgan bo'lishi mumkin). Postni qaytadan qo'shing."; return
-    if not (m.message or m.media): E["_"] = FRIENDLY["MessageEmptyError"]; return
-    for chat in json.loads(j["chats"]):
-        try:
-            s = await send(c, chat, m)
-            q("insert into sent(user_id,ad_id,job_id,chat_id,chat_title,msg_id,ts) values(?,?,?,?,?,?,?)", (u, j["ad_id"], j["id"], chat["id"], chat["title"], s.id, time.time()))
-        except errors.FloodWaitError as e: await asyncio.sleep(min(e.seconds, 600) + 1)
-        except T.DEAD: await T.dead(u); E["_"] = "Akkaunt Telegram tomonidan uzilgan."; return
-        except Exception as e:
-            if type(e).__name__ in ("PeerFloodError", "UserDeactivatedBanError", "UserDeactivatedError", "PhoneNumberBannedError"):
-                q("update jobs set active=0 where user_id=?", (u,))   # Telegram cheklov qo'ydi: hamma vazifa to'xtaydi
-                E["_"] = "Telegram akkauntingizga cheklov qo'ydi (spam deb topildi). Barcha vazifalar to'xtatildi. @SpamBot ga yozib holatni tekshiring."; return
-            E[chat["title"]] = friendly(e)
-        await asyncio.sleep(random.uniform(5, 12))  # ban bo'lmasligi uchun pauza
+    jid, u = j["id"], j["user_id"]; E = api.ERR[jid] = {}; L = api.LIVE[jid] = {"state": "queue", "prog": "", "t": time.time()}
+    async with ULOCK.setdefault(u, asyncio.Lock()):
+        L["state"] = "run"
+        fu = api.FLOOD.get(u, 0)
+        if fu > time.time():  # Telegram cheklovi davom etmoqda: urinmaymiz
+            L.update(state="flood", until=fu); q("update jobs set next_run=max(next_run, ?) where id=?", (fu + 30, jid)); return
+        c, me = await T.me_of(u)
+        if me is None: L["state"] = "idle"; E["_"] = "Akkaunt ulanmagan. Ilovaga kirib, qaytadan ulang."; return
+        ad = q("select * from ads where id=?", (j["ad_id"],))
+        m = await c.get_messages(ad[0]["peer"] or "me", ids=ad[0]["msg_id"]) if ad else None
+        if not m: L["state"] = "idle"; E["_"] = "Post topilmadi (bot bilan chatdan o'chirib yuborilgan bo'lishi mumkin). Postni qaytadan qo'shing."; return
+        if not (m.message or m.media): L["state"] = "idle"; E["_"] = FRIENDLY["MessageEmptyError"]; return
+        chats = json.loads(j["chats"])
+        for k, chat in enumerate(chats, 1):
+            L["prog"] = f"{k}/{len(chats)}"
+            try:
+                s = await send(c, u, chat, m)
+                q("insert into sent(user_id,ad_id,job_id,chat_id,chat_title,msg_id,ts) values(?,?,?,?,?,?,?)", (u, j["ad_id"], jid, chat["id"], chat["title"], s.id, time.time()))
+            except asyncio.TimeoutError: E[chat["title"]] = "Telegram javob bermadi (vaqt tugadi)."
+            except errors.FloodWaitError as e:
+                if e.seconds > 90:  # uzoq cheklov: butun aylanishni to'xtatamiz va vaqti kelganda davom etamiz
+                    until = time.time() + e.seconds; api.FLOOD[u] = until
+                    q("update jobs set next_run=max(next_run, ?) where user_id=?", (until + 30, u))
+                    L.update(state="flood", until=until)
+                    E["_"] = f"Telegram akkauntingizga vaqtinchalik cheklov qo'ydi (juda ko'p xabar). {hm(until)} dan keyin o'zi davom etadi."; return
+                await asyncio.sleep(e.seconds + 1)
+            except T.DEAD: await T.dead(u); L["state"] = "idle"; E["_"] = "Akkaunt Telegram tomonidan uzilgan."; return
+            except Exception as e:
+                if type(e).__name__ in ("PeerFloodError", "UserDeactivatedBanError", "UserDeactivatedError", "PhoneNumberBannedError"):
+                    q("update jobs set active=0 where user_id=?", (u,))   # Telegram cheklov qo'ydi: hamma vazifa to'xtaydi
+                    L["state"] = "idle"; E["_"] = "Telegram akkauntingizga cheklov qo'ydi (spam deb topildi). Barcha vazifalar to'xtatildi. @SpamBot ga yozib holatni tekshiring."; return
+                E[chat["title"]] = friendly(e)
+            await asyncio.sleep(random.uniform(5, 12))  # ban bo'lmasligi uchun pauza
+        L.update(state="idle", prog="", t=time.time())
 
 async def run_safe(j):
-    try: await run_job(j)
-    except Exception as e: api.ERR[j["id"]] = {"_": friendly(e)}; T.log("vazifa xato:", e)
+    try: await asyncio.wait_for(run_job(j), 7200)
+    except asyncio.TimeoutError:
+        api.ERR[j["id"]] = {"_": "Yuborish juda uzoq cho'zildi va to'xtatildi. Keyingi safar qayta uriniladi."}; api.LIVE[j["id"]] = {"state": "idle"}
+    except Exception as e:
+        api.ERR[j["id"]] = {"_": friendly(e)}; api.LIVE[j["id"]] = {"state": "idle"}; T.log("vazifa xato:", type(e).__name__, e)
     finally: RUN.discard(j["id"])
 
 async def scheduler():

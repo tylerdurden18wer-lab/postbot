@@ -6,7 +6,7 @@ import config
 from db import q
 
 CL, PH, GC, HOOKS = {}, {}, {}, []
-WAIT, LASTG = {}, {}   # "yangi post" kutish vaqti, albom nazorati   # clientlar, kod so'rovlari, guruhlar keshi, "akkaunt uzildi" xabarchilari
+WAIT, LASTG, WARM = {}, {}, set()   # WARM: chatlar keshi yuklangan foydalanuvchilar   # "yangi post" kutish vaqti, albom nazorati   # clientlar, kod so'rovlari, guruhlar keshi, "akkaunt uzildi" xabarchilari
 DEAD = (errors.AuthKeyUnregisteredError, errors.SessionRevokedError, errors.SessionExpiredError,
         errors.AuthKeyDuplicatedError, errors.UnauthorizedError)
 
@@ -35,7 +35,7 @@ async def reset(uid):  # clientni yopib, saqlangan sessiyani o'chirish
     if c:
         try: await c.disconnect()
         except Exception: pass
-    g = GC.pop(uid, None)
+    g = GC.pop(uid, None); WARM.discard(uid)
     if g and g.get("task"): g["task"].cancel()
     q("update users set session='' where uid=?", (uid,))
 
@@ -66,6 +66,7 @@ async def load_groups(u, g):  # guruhlar fonda yuklanadi, kelgani sari ro'yxatga
         c = await get_client(u)
         async for d in c.iter_dialogs(ignore_migrated=True):
             if d.is_group: g["d"].append({"id": d.id, "title": d.title or "Guruh", "n": getattr(d.entity, "participants_count", None)})
+        WARM.add(u)
     except DEAD: g["err"] = "login"; await dead(u)
     except Exception as e: g["err"] = f"{type(e).__name__}: {e}"; log("guruhlar xato:", g["err"])
     g["done"] = True; g["t"] = time.time()

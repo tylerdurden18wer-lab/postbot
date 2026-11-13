@@ -7,6 +7,7 @@ import config, tgclients as T
 from db import q, D, drop_job
 
 r = router = APIRouter(prefix="/api")
+LIVE, FLOOD = {}, {}   # vazifalarning jonli holati; Telegram cheklovi tugash vaqti (foydalanuvchi bo'yicha)
 ERR = {}  # vazifa xatolari: {job_id: {"_": umumiy, "guruh nomi": xato}} (worker yozadi)
 def first_err(jid): return next(iter((ERR.get(jid) or {}).values()), None)
 
@@ -95,9 +96,15 @@ def del_post(i: int, u: int = Depends(auth)):
     for j in q("select id from jobs where ad_id=? and user_id=?", (i, u)): drop_job(j["id"])
     q("delete from ads where id=? and user_id=?", (i, u)); return {"ok": 1}
 
+@r.get("/home")
+def home(u: int = Depends(auth)):  # bosh sahifa: vazifalar + umumiy holat
+    js = jobs(u); now = time.time(); act = [j["next_run"] for j in js if j["active"]]
+    return {"jobs": js, "today": q("select count(*) n from sent where user_id=? and ts>?", (u, now - 86400))[0]["n"],
+            "flood": FLOOD.get(u, 0) if FLOOD.get(u, 0) > now else 0, "next": min(act) if act else 0, "v": config.VERSION}
+
 @r.get("/jobs")
 def jobs(u: int = Depends(auth)):
-    return [dict(j, err=first_err(j["id"]), chats=json.loads(j["chats"])) for j in
+    return [dict(j, err=first_err(j["id"]), live=LIVE.get(j["id"]), chats=json.loads(j["chats"])) for j in
             q("""select j.*, a.title, a.preview, a.kind,
                  (select count(*) from sent s where s.job_id=j.id) sent_n, (select max(ts) from sent s where s.job_id=j.id) last
                  from jobs j left join ads a on a.id=j.ad_id where j.user_id=? order by j.id desc""", (u,))]
@@ -171,7 +178,7 @@ def job_detail(i: int, u: int = Depends(auth)):  # bitta vazifaning o'z statisti
         from sent s where s.job_id=? and s.user_id=? group by chat_id""", (i, i, i, u))}
     groups = [{"id": c["id"], "title": c["title"], "n": per.get(c["id"], {}).get("n", 0), "last": per.get(c["id"], {}).get("last"),
                "rep": per.get(c["id"], {}).get("rep", 0), "ppl": per.get(c["id"], {}).get("ppl", 0), "err": errs.get(c["title"])} for c in j["chats"]]
-    return {"job": j, "total": tot["n"], "last": tot["last"], "replies": rp["n"], "people": rp["p"], "err": errs.get("_"), "groups": groups}
+    return {"job": j, "total": tot["n"], "last": tot["last"], "replies": rp["n"], "people": rp["p"], "err": errs.get("_"), "live": LIVE.get(i), "groups": groups}
 
 @r.post("/jobs/{i}/toggle")
 def toggle(i: int, u: int = Depends(auth)): q("update jobs set active=1-active where id=? and user_id=?", (i, u)); return {"ok": 1}

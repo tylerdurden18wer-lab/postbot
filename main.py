@@ -31,9 +31,9 @@ async def on_dead(request, exc): return JSONResponse({"detail": "login"}, status
 for _E in T.DEAD: app.add_exception_handler(_E, on_dead)
 
 @app.get("/")
-def index(): return FileResponse(os.path.join(os.path.dirname(os.path.abspath(__file__)), "index.html"))
+def index(): return FileResponse(os.path.join(os.path.dirname(os.path.abspath(__file__)), "index.html"), headers={"Cache-Control": "no-store"})
 
 @app.get("/health")
 def health():  # ochiq tekshiruv (maxfiy ma'lumotsiz)
-    return {"ok": True, "telethon": telethon.__version__, "bot": worker.BOT_OK, "bot_err": worker.BOT_ERR,
+    return {"ok": True, "v": config.VERSION, "telethon": telethon.__version__, "bot": worker.BOT_OK, "bot_err": worker.BOT_ERR,
             "webapp": bool(config.WEBAPP_URL), "users": q("select count(*) n from users where session!=''")[0]["n"]}

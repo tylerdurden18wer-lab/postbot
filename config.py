@@ -15,6 +15,7 @@ def need(name):
 API_ID = int(need("API_ID")); API_HASH = need("API_HASH"); BOT_TOKEN = need("BOT_TOKEN")
 WEBAPP_URL = os.environ.get("WEBAPP_URL", "").strip()
 if WEBAPP_URL.startswith("SHU_YERGA"): WEBAPP_URL = ""
+VERSION = "2.0"
 BOT_USERNAME = ""  # worker ishga tushganda to'ldiradi
 MIN_INTERVAL = int(os.environ.get("MIN_INTERVAL", "5"))
 MAX_JOBS = int(os.environ.get("MAX_JOBS", "10"))
