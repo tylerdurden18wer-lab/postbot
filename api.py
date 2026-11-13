@@ -4,7 +4,7 @@ from urllib.parse import parse_qsl
 from fastapi import APIRouter, Header, HTTPException, Depends
 from telethon import errors
 import config, tgclients as T
-from db import q, D
+from db import q, D, drop_job
 
 r = router = APIRouter(prefix="/api")
 ERR = {}  # vazifa xatolari: {job_id: {"_": umumiy, "guruh nomi": xato}} (worker yozadi)
@@ -92,7 +92,8 @@ def posts(u: int = Depends(auth)):
 
 @r.delete("/posts/{i}")
 def del_post(i: int, u: int = Depends(auth)):
-    q("delete from jobs where ad_id=? and user_id=?", (i, u)); q("delete from ads where id=? and user_id=?", (i, u)); return {"ok": 1}
+    for j in q("select id from jobs where ad_id=? and user_id=?", (i, u)): drop_job(j["id"])
+    q("delete from ads where id=? and user_id=?", (i, u)); return {"ok": 1}
 
 @r.get("/jobs")
 def jobs(u: int = Depends(auth)):
@@ -118,6 +119,44 @@ def edit_job(i: int, b: dict, u: int = Depends(auth)):  # post, guruhlar va vaqt
     check_job(b, u); iv = int(b["interval"])
     q("update jobs set ad_id=?, chats=?, interval=?, next_run=min(next_run, ?) where id=?", (b["ad_id"], json.dumps(b["chats"]), iv, time.time() + iv * 60, i)); return {"ok": 1}
 
+@r.post("/jobs/{i}/chats")
+def job_add_chats(i: int, b: dict, u: int = Depends(auth)):  # vazifaga bitta/bir nechta guruh qo'shish
+    row = q("select chats from jobs where id=? and user_id=?", (i, u))
+    if not row: raise HTTPException(404, "Vazifa topilmadi.")
+    chats = json.loads(row[0]["chats"]); have = {c["id"] for c in chats}
+    for c in b.get("add", []):
+        if c["id"] in have: continue
+        if len(chats) >= config.MAX_CHATS: raise HTTPException(400, f"Bitta vazifada eng ko'pi bilan {config.MAX_CHATS} ta guruh.")
+        chats.append({"id": c["id"], "title": c["title"]}); have.add(c["id"])
+    q("update jobs set chats=? where id=?", (json.dumps(chats), i)); return {"ok": 1}
+
+@r.delete("/jobs/{i}/chats/{cid}")
+def job_del_chat(i: int, cid: int, u: int = Depends(auth)):  # guruhni shu vazifadan chiqarish
+    row = q("select chats from jobs where id=? and user_id=?", (i, u))
+    if not row: raise HTTPException(404, "Vazifa topilmadi.")
+    chats = [c for c in json.loads(row[0]["chats"]) if c["id"] != cid]
+    if not chats: raise HTTPException(400, "Kamida 1 ta guruh qolishi kerak. Butun vazifani o'chirmoqchi bo'lsangiz, 🗑 ni bosing.")
+    q("update jobs set chats=? where id=?", (json.dumps(chats), i)); return {"ok": 1}
+
+@r.post("/pause_all")
+def pause_all(u: int = Depends(auth)): q("update jobs set active=0 where user_id=?", (u,)); return {"ok": 1}
+
+@r.post("/groups/leave")
+async def leave_group(b: dict, u: int = Depends(auth)):  # Telegram'da guruhdan chiqish + barcha vazifalardan olib tashlash
+    c = await need(u); cid = int(b["id"])
+    try: await c.delete_dialog(cid)
+    except T.DEAD: await T.dead(u); raise HTTPException(401, "login")
+    except Exception as e: raise HTTPException(400, f"Guruhdan chiqib bo'lmadi: {type(e).__name__}: {e}")
+    gone = 0
+    for j in q("select id, chats from jobs where user_id=?", (u,)):
+        old = json.loads(j["chats"]); new = [x for x in old if x["id"] != cid]
+        if len(new) == len(old): continue
+        if new: q("update jobs set chats=? where id=?", (json.dumps(new), j["id"]))
+        else: drop_job(j["id"]); gone += 1
+    g = T.GC.get(u)
+    if g: g["d"] = [x for x in g["d"] if x["id"] != cid]
+    return {"ok": 1, "jobs_removed": gone}
+
 @r.get("/jobs/{i}")
 def job_detail(i: int, u: int = Depends(auth)):  # bitta vazifaning o'z statistikasi
     row = q("select j.*, a.title, a.preview, a.kind from jobs j left join ads a on a.id=j.ad_id where j.id=? and j.user_id=?", (i, u))
@@ -139,7 +178,9 @@ def toggle(i: int, u: int = Depends(auth)): q("update jobs set active=1-active w
 @r.post("/jobs/{i}/now")
 def now(i: int, u: int = Depends(auth)): q("update jobs set next_run=0, active=1 where id=? and user_id=?", (i, u)); return {"ok": 1}
 @r.delete("/jobs/{i}")
-def del_job(i: int, u: int = Depends(auth)): q("delete from jobs where id=? and user_id=?", (i, u)); return {"ok": 1}
+def del_job(i: int, u: int = Depends(auth)):
+    if q("select 1 from jobs where id=? and user_id=?", (i, u)): drop_job(i)
+    return {"ok": 1}
 
 @r.get("/stats")
 def stats(u: int = Depends(auth)):

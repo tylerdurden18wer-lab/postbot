@@ -16,3 +16,6 @@ try: D.execute("alter table sent add column job_id int default 0")
 except sqlite3.OperationalError: pass
 def q(sql, a=()):
     c = D.execute(sql, a); D.commit(); return [dict(r) for r in c.fetchall()]
+
+def drop_job(i):  # vazifa o'chadi, lekin umumiy statistika tarixi saqlanadi (id qayta ishlatilsa ham aralashmaydi)
+    q("update sent set job_id=0 where job_id=?", (i,)); q("delete from jobs where id=?", (i,))

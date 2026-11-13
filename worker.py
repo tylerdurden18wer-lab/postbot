@@ -47,7 +47,11 @@ async def run_job(j):
             q("insert into sent(user_id,ad_id,job_id,chat_id,chat_title,msg_id,ts) values(?,?,?,?,?,?,?)", (u, j["ad_id"], j["id"], chat["id"], chat["title"], s.id, time.time()))
         except errors.FloodWaitError as e: await asyncio.sleep(min(e.seconds, 600) + 1)
         except T.DEAD: await T.dead(u); E["_"] = "Akkaunt Telegram tomonidan uzilgan."; return
-        except Exception as e: E[chat["title"]] = friendly(e)
+        except Exception as e:
+            if type(e).__name__ in ("PeerFloodError", "UserDeactivatedBanError", "UserDeactivatedError", "PhoneNumberBannedError"):
+                q("update jobs set active=0 where user_id=?", (u,))   # Telegram cheklov qo'ydi: hamma vazifa to'xtaydi
+                E["_"] = "Telegram akkauntingizga cheklov qo'ydi (spam deb topildi). Barcha vazifalar to'xtatildi. @SpamBot ga yozib holatni tekshiring."; return
+            E[chat["title"]] = friendly(e)
         await asyncio.sleep(random.uniform(5, 12))  # ban bo'lmasligi uchun pauza
 
 async def run_safe(j):
